@@ -1,0 +1,49 @@
+name: Deploy TrackManneke Production
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Google Cloud VM via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.GCP_VM_IP }}
+          username: ${{ secrets.GCP_SSH_USER }}
+          key: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
+          script: |
+            mkdir -p ~/trackmanneke-production
+            cd ~/trackmanneke-production
+
+            if [ ! -d ".git" ]; then
+              git clone https://github.com/${{ github.repository }}.git .
+            fi
+            git fetch --all
+            git checkout ${{ github.sha }}
+
+            echo "DISCORD_TOKEN=${{ secrets.PROD_DISCORD_TOKEN }}" > .env
+            echo "GUILD_ID=${{ secrets.PROD_GUILD_ID }}" >> .env
+            echo "USER_AGENT=\"${{ secrets.USER_AGENT }}\"" >> .env
+            echo "UBISOFT_EMAIL=${{ secrets.UBISOFT_EMAIL }}" >> .env
+            echo "UBISOFT_PASSWORD=${{ secrets.UBISOFT_PASSWORD }}" >> .env
+            echo "NADEO_CLIENT_ID=${{ secrets.NADEO_CLIENT_ID }}" >> .env
+            echo "NADEO_CLIENT_SECRET=${{ secrets.NADEO_CLIENT_SECRET }}" >> .env
+
+            docker build -t trackmanneke-prod .
+
+            docker stop trackmanneke-prod || true
+            docker rm trackmanneke-prod || true
+
+            docker run -d \
+              --name trackmanneke-prod \
+              --restart unless-stopped \
+              -v $(pwd)/.env:/app/.env \
+              trackmanneke-prod
