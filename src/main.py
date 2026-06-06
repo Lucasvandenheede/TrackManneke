@@ -29,6 +29,7 @@ class TrackManneke(commands.Bot):
     async def setup_hook(self):
         await self._initialize_services()
         await self.load_extension("src.cogs.admin")
+        await self.load_extension("src.cogs.totd")
         print("Cogs loaded successfully.")
 
         if config.GUILD_ID:
@@ -86,12 +87,6 @@ class TrackManneke(commands.Bot):
         print(f"Bot is online: {self.user.name} (ID: {self.user.id})")
 
 
-if __name__ == "__main__":
-    if not config.DISCORD_TOKEN:
-        print("Error: No DISCORD_TOKEN found in the .env file!")
-    else:
-        bot = TrackManneke()
-        bot.run(config.DISCORD_TOKEN)
 
 if __name__ == "__main__":
     if not config.DISCORD_TOKEN:

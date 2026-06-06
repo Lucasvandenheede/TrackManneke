@@ -1,18 +1,259 @@
+import asyncio
+import logging
+from datetime import datetime, date
+from typing import Optional, List
+from zoneinfo import ZoneInfo
+
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
+
+from src.nadeo.totd import TOTDClient
+from src.embeds.totd import TOTDEmbed
+import src.config as config
+
+PARIS_TZ = ZoneInfo("Europe/Paris")
+
+logger = logging.getLogger(__name__)
+
 
 class Totd(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.retry_count = 0
+        self.max_retries = 5
+        self.last_error: Optional[str] = None
+        self._last_post_date: Optional[date] = None
+        self.post_totd_leaderboard.start()
 
-    @app_commands.command(name="ping", description="Test of de TrackManneke bot live is.")
-    async def ping(self, interaction: discord.Interaction):
-        latency = round(self.bot.latency * 1000)
-        await interaction.response.send_message(
-            f"Pong! TrackManneke luistert. Vertraging: {latency}ms", 
-            ephemeral=True
+    def cog_unload(self):
+        """Stop background task when cog is unloaded."""
+        self.post_totd_leaderboard.cancel()
+        logger.info("TOTD cog unloaded and background task cancelled")
+
+    @tasks.loop(minutes=1.0)
+    async def post_totd_leaderboard(self):
+        """Background task to post TOTD leaderboard daily at 18:59 Paris time.
+
+        Runs every minute and triggers at 18:59 Paris time, 1 minute before
+        the new TOTD drops at 19:00 Paris. Uses Paris time directly to avoid
+        server timezone issues and to handle DST (CET/CEST) automatically.
+        """
+        now_paris = datetime.now(PARIS_TZ)
+        if now_paris.hour != 18 or now_paris.minute != 59:
+            return
+        if self._last_post_date == now_paris.date():
+            return
+        self._last_post_date = now_paris.date()
+
+        logger.info("TOTD background task triggered at 18:59 Paris time")
+        await self._fetch_and_post_leaderboard()
+
+    @post_totd_leaderboard.before_loop
+    async def before_post_totd_leaderboard(self):
+        """Wait for bot to be ready before starting the loop."""
+        await self.bot.wait_until_ready()
+
+    async def _fetch_and_post_leaderboard(self):
+        """Fetch TOTD leaderboard and post to channel with retry logic."""
+        db = self.bot.db
+        nadeo_client = self.bot.nadeo_client
+
+        # Get channel ID from config or environment
+        channel_id_str = db.get_config("totd_channel_id") or config.TOTD_CHANNEL_ID
+        if not channel_id_str:
+            logger.error("TOTD channel ID not configured")
+            return
+
+        try:
+            channel_id = int(channel_id_str)
+            channel = self.bot.get_channel(channel_id)
+            if not channel:
+                logger.error(f"Channel not found: {channel_id}")
+                return
+        except ValueError:
+            logger.error(f"Invalid channel ID: {channel_id_str}")
+            return
+
+        self.retry_count = 0
+        while self.retry_count < self.max_retries:
+            try:
+                await self._post_to_channel(channel, nadeo_client, db)
+                self.retry_count = 0
+                self.last_error = None
+                return
+            except Exception as e:
+                self.retry_count += 1
+                self.last_error = str(e)
+                if self.retry_count < self.max_retries:
+                    wait_time = self.retry_count * 2 * 60
+                    logger.warning(
+                        f"TOTD fetch failed (attempt {self.retry_count}/{self.max_retries}): {e}. "
+                        f"Retrying in {wait_time // 60} minutes..."
+                    )
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.critical(
+                        f"TOTD fetch failed after {self.max_retries} attempts. Last error: {e}"
+                    )
+
+    async def _resolve_and_add_players(self, account_ids: List[str], db):
+        """Resolve display names for new players and add them to the DB."""
+        oauth = self.bot.oauth_client
+        if not oauth:
+            logger.warning("OAuth client unavailable, cannot resolve new player names")
+            return
+
+        new_count = 0
+        for i in range(0, len(account_ids), 50):
+            batch = account_ids[i : i + 50]
+            try:
+                names = await oauth.get_display_names(batch)
+                for aid, name in names.items():
+                    if not db.player_exists(aid):
+                        db.add_player(aid, name)
+                        new_count += 1
+            except Exception as e:
+                logger.error(f"Failed to resolve names for batch: {e}")
+
+        if new_count:
+            logger.info(f"Auto-tracked {new_count} new Belgian players")
+
+    async def _post_to_channel(
+        self, channel: discord.TextChannel, nadeo_client, db
+    ):
+        """Fetch TOTD data and post embed to channel."""
+        totd_client = TOTDClient(nadeo_client)
+
+        logger.info("Fetching current TOTD...")
+        totd_data = await totd_client.get_current_totd(
+            oauth_client=self.bot.oauth_client
         )
+        map_uid = totd_data.get("map_uid")
+        if not map_uid:
+            raise Exception("Could not extract map_uid from TOTD data")
+
+        logger.info(f"TOTD map_uid: {map_uid}")
+
+        belgian_players = db.get_all_players()
+        result = await totd_client.get_belgian_leaderboard(
+            map_uid, belgian_players
+        )
+
+        if result["new_player_ids"]:
+            logger.info(f"Discovered {len(result['new_player_ids'])} new Belgian players, resolving names...")
+            await self._resolve_and_add_players(result["new_player_ids"], db)
+            belgian_players = db.get_all_players()
+            result = await totd_client.get_belgian_leaderboard(
+                map_uid, belgian_players
+            )
+
+        entries = result["entries"]
+
+        logger.info(f"Found {len(entries)} Belgian players on this map")
+        embed = TOTDEmbed.build(totd_data, entries)
+
+        await channel.send(embed=embed)
+        logger.info("TOTD leaderboard posted successfully")
+
+    @app_commands.command(name="set-totd-channel", description="Set the channel for TOTD leaderboard posts")
+    @app_commands.describe(channel="The channel to post TOTD leaderboards in")
+    async def set_totd_channel(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        """Set the target channel for TOTD leaderboard posts."""
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message(
+                "❌ You don't have permission to use this command.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            db = self.bot.db
+            db.set_config("totd_channel_id", str(channel.id))
+            await interaction.response.send_message(
+                f"✅ TOTD leaderboard channel set to {channel.mention}",
+                ephemeral=True,
+            )
+            logger.info(f"TOTD channel updated to {channel.id} by {interaction.user}")
+        except Exception as e:
+            logger.error(f"Error setting TOTD channel: {e}")
+            await interaction.response.send_message(
+                f"❌ Error setting channel: {str(e)}",
+                ephemeral=True,
+            )
+
+
+    @app_commands.command(name="totd-leaderboard", description="Show the current TOTD leaderboard for Belgian players")
+    @app_commands.checks.cooldown(1, 30.0, key=lambda i: i.user.id)
+    async def totd_leaderboard(self, interaction: discord.Interaction):
+        """Fetch and display the current TOTD leaderboard for Belgian players."""
+        nadeo_client = self.bot.nadeo_client
+        db = self.bot.db
+
+        if not nadeo_client:
+            await interaction.response.send_message(
+                "❌ Nadeo client is not initialized. Check server configuration.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer()
+
+        try:
+            totd_client = TOTDClient(nadeo_client)
+            totd_data = await totd_client.get_current_totd(
+                oauth_client=self.bot.oauth_client
+            )
+            map_uid = totd_data.get("map_uid")
+            if not map_uid:
+                await interaction.followup.send(
+                    "❌ Could not fetch current TOTD data.", ephemeral=True
+                )
+                return
+
+            belgian_players = db.get_all_players()
+
+            result = await totd_client.get_belgian_leaderboard(
+                map_uid, belgian_players
+            )
+
+            if result["new_player_ids"]:
+                logger.info(f"Discovered {len(result['new_player_ids'])} new Belgian players")
+                await self._resolve_and_add_players(result["new_player_ids"], db)
+                belgian_players = db.get_all_players()
+                result = await totd_client.get_belgian_leaderboard(
+                    map_uid, belgian_players
+                )
+
+            entries = result["entries"]
+
+            embed = TOTDEmbed.build(totd_data, entries)
+
+            await interaction.followup.send(embed=embed)
+        except Exception as e:
+            logger.error(f"Error in /totd-leaderboard: {e}")
+            await interaction.followup.send(
+                f"❌ An error occurred while fetching the leaderboard: {str(e)}",
+                ephemeral=True,
+            )
+
+    @totd_leaderboard.error
+    async def totd_leaderboard_error(
+        self, interaction: discord.Interaction, error: app_commands.AppCommandError
+    ):
+        if isinstance(error, app_commands.CommandOnCooldown):
+            retry_after = int(error.retry_after)
+            await interaction.response.send_message(
+                f"⏳ Command on cooldown. Try again in **{retry_after} seconds**.",
+                ephemeral=True,
+            )
+        else:
+            logger.error(f"Unexpected error in /totd-leaderboard: {error}")
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "❌ An unexpected error occurred.", ephemeral=True
+                )
+
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Totd(bot))

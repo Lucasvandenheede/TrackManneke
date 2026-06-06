@@ -56,6 +56,16 @@ class Database:
             """
         )
 
+        # Create config table for runtime configuration
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS config (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            """
+        )
+
         self._conn.commit()
         logger.debug("Database schema initialized")
 
@@ -209,4 +219,51 @@ class Database:
             return result[0] if result else 0
         except sqlite3.Error as e:
             logger.error(f"Failed to get player count: {e}")
+            raise
+
+    def set_config(self, key: str, value: str) -> None:
+        """Store a configuration value.
+
+        Args:
+            key: Configuration key
+            value: Configuration value
+
+        Raises:
+            sqlite3.Error: If database operation fails
+        """
+        if not self._conn:
+            raise RuntimeError("Database not connected")
+
+        try:
+            cursor = self._conn.cursor()
+            cursor.execute(
+                "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
+                (key, value),
+            )
+            self._conn.commit()
+            logger.info(f"Set config: {key} = {value}")
+        except sqlite3.Error as e:
+            logger.error(f"Failed to set config: {e}")
+            raise
+
+    def get_config(self, key: str, default: Optional[str] = None) -> Optional[str]:
+        """Retrieve a configuration value.
+
+        Args:
+            key: Configuration key
+            default: Default value if key not found
+
+        Returns:
+            Configuration value or default if not found
+        """
+        if not self._conn:
+            raise RuntimeError("Database not connected")
+
+        try:
+            cursor = self._conn.cursor()
+            cursor.execute("SELECT value FROM config WHERE key = ?", (key,))
+            row = cursor.fetchone()
+            return row[0] if row else default
+        except sqlite3.Error as e:
+            logger.error(f"Failed to get config: {e}")
             raise
