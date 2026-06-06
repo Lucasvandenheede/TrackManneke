@@ -2,13 +2,10 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import AsyncContextManager, Optional
-
 import aiohttp
-
 from .auth import NadeoAuth
 
 logger = logging.getLogger(__name__)
-
 
 class NadeoClient:
     def __init__(self, auth: NadeoAuth, user_agent: str):

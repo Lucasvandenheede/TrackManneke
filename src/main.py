@@ -17,7 +17,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
 class TrackManneke(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
@@ -42,7 +41,6 @@ class TrackManneke(commands.Bot):
             print("Error: No GUILD_ID found in the configuration! Slash commands will not be synced to any guild.")
 
     async def _initialize_services(self):
-        """Initialize database, Nadeo client, and OAuth client."""
         try:
             self.db = Database("src/db/trackmania.db")
             self.db.connect()
@@ -74,7 +72,6 @@ class TrackManneke(commands.Bot):
             raise
 
     async def close(self):
-        """Clean up resources on shutdown."""
         if self.db:
             self.db.disconnect()
         if self.nadeo_client:
@@ -85,8 +82,6 @@ class TrackManneke(commands.Bot):
 
     async def on_ready(self):
         print(f"Bot is online: {self.user.name} (ID: {self.user.id})")
-
-
 
 if __name__ == "__main__":
     if not config.DISCORD_TOKEN:

@@ -11,42 +11,27 @@ logger = logging.getLogger(__name__)
 
 
 class NadeoAuth:
-    """Handles Trackmania authentication via Nadeo Service Account.
-
-    Uses the service account authentication flow (as of April 2026).
-    Ref: https://webservices.openplanet.dev/auth
-    """
-
     NADEO_TOKEN_URL = "https://prod.trackmania.core.nadeo.online/v2/authentication/token/basic"
     NADEO_REFRESH_URL = "https://prod.trackmania.core.nadeo.online/v2/authentication/token/refresh"
 
     def __init__(self, service_account_login: str, service_account_password: str):
-        """Initialize NadeoAuth with service account credentials.
-
-        Args:
-            service_account_login: Service account login (from Trackmania.com)
-            service_account_password: Service account password
-        """
         self.login = service_account_login
         self.password = service_account_password
         self._nadeo_tokens: Dict[str, Dict[str, Any]] = {}
         self._session: Optional[aiohttp.ClientSession] = None
 
     async def get_session(self) -> aiohttp.ClientSession:
-        """Get or create aiohttp ClientSession."""
         if self._session is None:
             self._session = aiohttp.ClientSession()
         return self._session
 
     async def close(self) -> None:
-        """Close the session."""
         if self._session:
             await self._session.close()
             self._session = None
 
     @staticmethod
     def _decode_jwt_exp(token: str) -> datetime:
-        """Extract expiration datetime from JWT token."""
         try:
             parts = token.split(".")
             if len(parts) != 3:
@@ -70,13 +55,11 @@ class NadeoAuth:
             raise
 
     def _get_basic_auth_header(self) -> str:
-        """Generate Basic authentication header."""
         credentials = f"{self.login}:{self.password}"
         encoded = base64.b64encode(credentials.encode()).decode()
         return f"Basic {encoded}"
 
     async def _fetch_token(self, audience: str = "NadeoLiveServices") -> Dict[str, Any]:
-        """Fetch a new access token from Nadeo."""
         logger.info(f"Fetching new Nadeo token for audience {audience}...")
         session = await self.get_session()
 
@@ -119,7 +102,6 @@ class NadeoAuth:
             raise
 
     async def _refresh_token(self, refresh_token: str) -> Dict[str, Any]:
-        """Refresh an access token using a refresh token."""
         logger.info("Refreshing Nadeo token...")
         session = await self.get_session()
 
@@ -158,11 +140,6 @@ class NadeoAuth:
             raise
 
     async def get_nadeo_token(self, audience: str = "NadeoLiveServices") -> str:
-        """Get Nadeo JWT token for a specific audience.
-
-        Caches tokens in memory and automatically refreshes if within 5 minutes
-        of expiration.
-        """
         now = datetime.now()
 
         if audience in self._nadeo_tokens:

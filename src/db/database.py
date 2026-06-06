@@ -6,21 +6,12 @@ from contextlib import asynccontextmanager
 
 logger = logging.getLogger(__name__)
 
-
 class Database:
-    """SQLite database manager for tracking Belgian Trackmania players."""
-
     def __init__(self, db_path: str = "trackmania.db"):
-        """Initialize database connection.
-
-        Args:
-            db_path: Path to SQLite database file
-        """
         self.db_path = Path(db_path)
         self._conn: Optional[sqlite3.Connection] = None
 
     def connect(self) -> None:
-        """Connect to database and initialize schema."""
         try:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
             self._conn = sqlite3.connect(str(self.db_path))
@@ -32,20 +23,17 @@ class Database:
             raise
 
     def disconnect(self) -> None:
-        """Close database connection."""
         if self._conn:
             self._conn.close()
             self._conn = None
             logger.info("Database connection closed")
 
     def _init_schema(self) -> None:
-        """Initialize database schema."""
         if not self._conn:
             raise RuntimeError("Database not connected")
 
         cursor = self._conn.cursor()
 
-        # Create players table if it doesn't exist
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS players (
@@ -56,7 +44,6 @@ class Database:
             """
         )
 
-        # Create config table for runtime configuration
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS config (
@@ -70,18 +57,6 @@ class Database:
         logger.debug("Database schema initialized")
 
     def add_player(self, account_id: str, player_name: str) -> bool:
-        """Add a player to tracking list.
-
-        Args:
-            account_id: Player's Nadeo account UUID
-            player_name: Player's display name
-
-        Returns:
-            True if player was added, False if already exists
-
-        Raises:
-            sqlite3.Error: If database operation fails
-        """
         if not self._conn:
             raise RuntimeError("Database not connected")
 
@@ -107,17 +82,6 @@ class Database:
             raise
 
     def remove_player(self, account_id: str) -> bool:
-        """Remove a player from tracking list.
-
-        Args:
-            account_id: Player's Nadeo account UUID
-
-        Returns:
-            True if player was removed, False if not found
-
-        Raises:
-            sqlite3.Error: If database operation fails
-        """
         if not self._conn:
             raise RuntimeError("Database not connected")
 
@@ -137,14 +101,6 @@ class Database:
             raise
 
     def get_player(self, account_id: str) -> Optional[Dict[str, Any]]:
-        """Get player by account ID.
-
-        Args:
-            account_id: Player's Nadeo account UUID
-
-        Returns:
-            Player dict with account_id and player_name, or None if not found
-        """
         if not self._conn:
             raise RuntimeError("Database not connected")
 
@@ -164,11 +120,6 @@ class Database:
             raise
 
     def get_all_players(self) -> List[Dict[str, Any]]:
-        """Get all tracked players.
-
-        Returns:
-            List of player dicts with account_id and player_name
-        """
         if not self._conn:
             raise RuntimeError("Database not connected")
 
@@ -182,14 +133,6 @@ class Database:
             raise
 
     def player_exists(self, account_id: str) -> bool:
-        """Check if player is tracked.
-
-        Args:
-            account_id: Player's Nadeo account UUID
-
-        Returns:
-            True if player is tracked, False otherwise
-        """
         if not self._conn:
             raise RuntimeError("Database not connected")
 
@@ -204,11 +147,6 @@ class Database:
             raise
 
     def get_player_count(self) -> int:
-        """Get total number of tracked players.
-
-        Returns:
-            Number of players in database
-        """
         if not self._conn:
             raise RuntimeError("Database not connected")
 
@@ -222,15 +160,6 @@ class Database:
             raise
 
     def set_config(self, key: str, value: str) -> None:
-        """Store a configuration value.
-
-        Args:
-            key: Configuration key
-            value: Configuration value
-
-        Raises:
-            sqlite3.Error: If database operation fails
-        """
         if not self._conn:
             raise RuntimeError("Database not connected")
 
@@ -247,15 +176,6 @@ class Database:
             raise
 
     def get_config(self, key: str, default: Optional[str] = None) -> Optional[str]:
-        """Retrieve a configuration value.
-
-        Args:
-            key: Configuration key
-            default: Default value if key not found
-
-        Returns:
-            Configuration value or default if not found
-        """
         if not self._conn:
             raise RuntimeError("Database not connected")
 

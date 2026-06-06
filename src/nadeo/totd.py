@@ -9,11 +9,8 @@ logger = logging.getLogger(__name__)
 
 
 class TOTDClient:
-    """Client for fetching Track of the Day (TOTD) data from Nadeo APIs."""
-
     LIVE_API = "https://live-services.trackmania.nadeo.live/api/token"
     CORE_API = "https://prod.trackmania.core.nadeo.online"
-
     BELGIUM_NAMES = {"belgium", "belgië", "belgique", "belgien"}
 
     def __init__(self, nadeo_client: NadeoClient):
@@ -22,7 +19,6 @@ class TOTDClient:
         self._all_zones: Optional[List[Dict[str, Any]]] = None
 
     async def _fetch_zones(self) -> List[Dict[str, Any]]:
-        """Fetch all zones from the Core API."""
         if self._all_zones is not None:
             return self._all_zones
         url = f"{self.CORE_API}/zones/"
@@ -33,7 +29,6 @@ class TOTDClient:
         return self._all_zones
 
     def _build_zone_tree(self, zones: List[Dict[str, Any]]) -> Dict[str, List[str]]:
-        """Build a parent -> children map from flat zone list."""
         children: Dict[str, List[str]] = {}
         for z in zones:
             parent = z.get("parentId")
@@ -42,7 +37,6 @@ class TOTDClient:
         return children
 
     async def _get_belgian_zone_ids(self) -> Set[str]:
-        """Get all zone IDs that are within Belgium."""
         if self._belgian_zone_ids is not None:
             return self._belgian_zone_ids
 
@@ -74,7 +68,6 @@ class TOTDClient:
         return result
 
     async def get_current_totd(self, oauth_client=None) -> Dict[str, Any]:
-        """Fetch the current TOTD map data via Live API."""
         url = f"{self.LIVE_API}/campaign/month?offset=0&length=1"
         async with self.nadeo_client.get(url) as resp:
             if resp.status != 200:
@@ -135,7 +128,6 @@ class TOTDClient:
     async def get_totd_leaderboard(
         self, map_uid: str, limit: int = 1000
     ) -> List[Dict[str, Any]]:
-        """Fetch the global leaderboard for a map, paginating as needed."""
         page_size = 100
         all_entries = []
         seen_accounts = set()
@@ -179,21 +171,6 @@ class TOTDClient:
     async def get_belgian_leaderboard(
         self, map_uid: str, tracked_players: List[Dict[str, str]]
     ) -> Dict[str, Any]:
-        """Get Belgian player standings from the global TOTD leaderboard.
-
-        Auto-discovers Belgian players from the global leaderboard by
-        checking their zone against the Belgian zone tree.
-
-        Args:
-            map_uid: The map UID.
-            tracked_players: List of dicts with account_id and player_name
-                             from the local DB.
-
-        Returns:
-            Dict with:
-              - entries: list of Belgian player dicts sorted by world_rank
-              - new_players: list of account_ids of newly discovered Belgians
-        """
         tracked_ids = {p["account_id"] for p in tracked_players}
         name_map = {p["account_id"]: p["player_name"] for p in tracked_players}
 
