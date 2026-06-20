@@ -1,59 +1,21 @@
 # TrackManneke
 
-Discord bot with two runtime modes:
+Discord bot that tracks Belgian Trackmania players across COTD (Cup of the Day) and TOTD (Track of the Day) leaderboards. Built so the Belgian TM community can follow their own without manually scanning thousands of global entries.
 
-- Development: local run with `.env`
-- Production: Docker image run with `.env.production`
+## Features
 
-## Local Development (dev branch)
+- **COTD State Machine** — Automatically detects new COTD rotations, fetches qualifier results (top 3000), filters Belgian players, posts division-grouped leaderboards. Transitions to bracket phase and per-division round results as matches complete.
+- **TOTD Leaderboard** — Daily snapshot (18:59 Paris time) of Belgian player rankings on the current Track of the Day. Manual `/totd-leaderboard` command also available.
+- **Player Discovery** — Startup and daily runs scan the TOTD leaderboard for players with Belgian zone IDs. Also discovers Belgian players from COTD qualifiers via zone-map matching.
+- **Discord Integration** — Configurable COTD/TOTD channels, ephemeral command responses, owner-only setup commands.
 
-1. Install dependencies:
-   `pip install -r requirements.txt`
-2. Ensure `.env` exists at repository root.
-3. Run locally:
-   `python src/main.py`
+## Upcoming
 
-By default, the bot loads `.env` because `APP_ENV` defaults to `development`.
+- Historical COTD stats and per-player performance tracking
+- Web dashboard for Belgian TM leaderboards
+- Team/clan filter support
+- Automated deployment health checks
 
-## Production Build (master + release tag)
+## Tech
 
-The GitHub Actions workflow builds and pushes a production image only when you push a tag matching `v*` and that tag points to a commit on `master`.
-
-Workflow file:
-
-- `.github/workflows/deploy.yml`
-
-It builds with:
-
-- `--build-arg ENV_FILE=.env.production`
-
-Before the image build, the workflow writes `.env.production` from the `ENV_PRODUCTION` GitHub secret.
-
-And tags/pushes to Google Artifact Registry as:
-
-- `<region>-docker.pkg.dev/<project>/<repo>/trackmanneke:<tag>`
-- `<region>-docker.pkg.dev/<project>/<repo>/trackmanneke:latest`
-
-## Required GitHub Variables and Secrets
-
-Repository variables:
-
-- `GCP_REGION`
-- `GCP_PROJECT_ID`
-- `GAR_REPOSITORY`
-
-Repository secrets:
-
-- `GCP_WORKLOAD_IDENTITY_PROVIDER`
-- `GCP_SERVICE_ACCOUNT`
-- `ENV_PRODUCTION` (full multi-line `.env.production` contents)
-
-## Environment Selection Logic
-
-`src/config.py` loads dotenv in this order:
-
-1. `ENV_FILE` if explicitly set
-2. `.env.production` when `APP_ENV=production`
-3. `.env` otherwise
-
-This gives you local dev with test-server credentials and production releases with production credentials.
+Python + discord.py, Nadeo/Ubisoft APIs (Meet, LiveServices, OAuth), SQLite.
