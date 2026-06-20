@@ -29,6 +29,7 @@ class TrackManneke(commands.Bot):
         await self._initialize_services()
         await self.load_extension("src.cogs.admin")
         await self.load_extension("src.cogs.totd")
+        await self.load_extension("src.cogs.cotd")
         print("Cogs loaded successfully.")
 
         if config.GUILD_ID:

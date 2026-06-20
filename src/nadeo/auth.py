@@ -139,6 +139,11 @@ class NadeoAuth:
             logger.error(f"Error refreshing Nadeo token: {e}")
             raise
 
+    def invalidate_token(self, audience: str) -> None:
+        if audience in self._nadeo_tokens:
+            logger.info(f"Invalidating cached Nadeo token for {audience}")
+            del self._nadeo_tokens[audience]
+
     async def get_nadeo_token(self, audience: str = "NadeoLiveServices") -> str:
         now = datetime.now()
 

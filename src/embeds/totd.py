@@ -45,7 +45,7 @@ class TOTDEmbed:
         if image_url:
             embed.set_thumbnail(url=image_url)
 
-        embed.set_footer(text="TrackManneke")
+        embed.set_footer(text="TrackManneke \u2022 By Luckyboi61")
 
         return embed
 
