@@ -146,6 +146,24 @@ class Database:
             logger.error(f"Failed to check player existence: {e}")
             raise
 
+    def save_discovered_player(self, account_id: str, player_name: str) -> bool:
+        if not self._conn:
+            raise RuntimeError("Database not connected")
+        try:
+            cursor = self._conn.cursor()
+            cursor.execute(
+                "INSERT OR IGNORE INTO players (account_id, player_name) VALUES (?, ?)",
+                (account_id, player_name),
+            )
+            self._conn.commit()
+            if cursor.rowcount > 0:
+                logger.info(f"Discovered new player: {player_name} ({account_id})")
+                return True
+            return False
+        except sqlite3.Error as e:
+            logger.error(f"Failed to save discovered player: {e}")
+            raise
+
     def get_player_count(self) -> int:
         if not self._conn:
             raise RuntimeError("Database not connected")

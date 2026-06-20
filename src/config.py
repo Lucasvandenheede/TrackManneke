@@ -27,6 +27,7 @@ OAUTH_CLIENT_ID = os.getenv("OAUTH_CLIENT_ID")
 OAUTH_CLIENT_SECRET = os.getenv("OAUTH_CLIENT_SECRET")
 
 TOTD_CHANNEL_ID = os.getenv("TOTD_CHANNEL_ID")
+COTD_CHANNEL_ID = os.getenv("COTD_CHANNEL_ID")
 TIMEZONE = os.getenv("TIMEZONE", "Europe/Brussels")
 
 EMOTE_AT_ID = "1512639786689626154" if APP_ENV not in {"production", "prod"} else "1457699626533785631"

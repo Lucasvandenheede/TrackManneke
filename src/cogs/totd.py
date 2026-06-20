@@ -43,23 +43,27 @@ class Totd(commands.Cog):
     async def before_post_totd_leaderboard(self):
         await self.bot.wait_until_ready()
 
-    async def _fetch_and_post_leaderboard(self):
+    def _get_totd_channel(self) -> Optional[discord.TextChannel]:
         db = self.bot.db
-        nadeo_client = self.bot.nadeo_client
-
         channel_id_str = db.get_config("totd_channel_id") or config.TOTD_CHANNEL_ID
         if not channel_id_str:
             logger.error("TOTD channel ID not configured")
-            return
-
+            return None
         try:
             channel_id = int(channel_id_str)
             channel = self.bot.get_channel(channel_id)
             if not channel:
-                logger.error(f"Channel not found: {channel_id}")
-                return
+                logger.error(f"TOTD channel not found: {channel_id}")
+            return channel
         except ValueError:
-            logger.error(f"Invalid channel ID: {channel_id_str}")
+            logger.error(f"Invalid TOTD channel ID: {channel_id_str}")
+            return None
+
+    async def _fetch_and_post_leaderboard(self):
+        nadeo_client = self.bot.nadeo_client
+
+        channel = self._get_totd_channel()
+        if not channel:
             return
 
         self.retry_count = 0
@@ -84,7 +88,7 @@ class Totd(commands.Cog):
                         f"TOTD fetch failed after {self.max_retries} attempts. Last error: {e}"
                     )
 
-    async def _resolve_and_add_players(self, account_ids: List[str], db):
+    async def _resolve_and_add_players(self, account_ids: List[str], db, nadeo_client=None):
         oauth = self.bot.oauth_client
         if not oauth:
             logger.warning("OAuth client unavailable, cannot resolve new player names")
@@ -96,11 +100,10 @@ class Totd(commands.Cog):
             try:
                 names = await oauth.get_display_names(batch)
                 for aid, name in names.items():
-                    if not db.player_exists(aid):
-                        db.add_player(aid, name)
+                    if db.save_discovered_player(aid, name):
                         new_count += 1
             except Exception as e:
-                logger.error(f"Failed to resolve names for batch: {e}")
+                logger.error(f"Failed to resolve players for batch: {e}")
 
         if new_count:
             logger.info(f"Auto-tracked {new_count} new Belgian players")
@@ -179,7 +182,14 @@ class Totd(commands.Cog):
             )
             return
 
-        await interaction.response.defer()
+        channel = self._get_totd_channel()
+        if not channel:
+            await interaction.response.send_message(
+                "TOTD channel not configured.", ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
 
         try:
             totd_client = TOTDClient(nadeo_client)
@@ -211,7 +221,10 @@ class Totd(commands.Cog):
 
             embed = TOTDEmbed.build(totd_data, entries)
 
-            await interaction.followup.send(embed=embed)
+            await channel.send(embed=embed)
+            await interaction.followup.send(
+                f"Leaderboard posted to {channel.mention}.", ephemeral=True,
+            )
         except Exception as e:
             logger.error(f"Error in /totd-leaderboard: {e}")
             await interaction.followup.send(
