@@ -126,7 +126,7 @@ class TOTDClient:
         }
 
     async def get_totd_leaderboard(
-        self, map_uid: str, limit: int = 1000
+        self, map_uid: str, limit: int = 3000
     ) -> List[Dict[str, Any]]:
         page_size = 100
         all_entries = []
@@ -168,13 +168,26 @@ class TOTDClient:
 
         return all_entries
 
+    async def get_belgian_zone_ids(self) -> Set[str]:
+        return await self._get_belgian_zone_ids()
+
+    async def get_totd_zone_map(
+        self, oauth_client=None, limit: int = 3000
+    ) -> Dict[str, str]:
+        totd = await self.get_current_totd(oauth_client=oauth_client)
+        map_uid = totd.get("map_uid")
+        if not map_uid:
+            return {}
+        leaderboard = await self.get_totd_leaderboard(map_uid, limit=limit)
+        return {e["account_id"]: e["zone_id"] for e in leaderboard if e.get("zone_id")}
+
     async def get_belgian_leaderboard(
         self, map_uid: str, tracked_players: List[Dict[str, str]]
     ) -> Dict[str, Any]:
         tracked_ids = {p["account_id"] for p in tracked_players}
         name_map = {p["account_id"]: p["player_name"] for p in tracked_players}
 
-        leaderboard = await self.get_totd_leaderboard(map_uid, limit=1000)
+        leaderboard = await self.get_totd_leaderboard(map_uid, limit=3000)
 
         belgian_zone_ids = await self._get_belgian_zone_ids()
         new_ids = set()
@@ -199,6 +212,6 @@ class TOTDClient:
         results.sort(key=lambda x: x["world_rank"])
 
         return {
-            "entries": results,
+            "entries": results[:25],
             "new_player_ids": list(new_ids),
         }

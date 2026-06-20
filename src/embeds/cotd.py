@@ -51,24 +51,19 @@ class COTDEmbed:
         return f"{map_line}\n{author_line}\n{config.EMOTE_AT} {author_time}"
 
     @staticmethod
-    def _group_by_division(
-        entries: List[Dict[str, Any]],
-    ) -> "defaultdict[int, List[Dict[str, Any]]]":
-        groups: "defaultdict[int, List[Dict[str, Any]]]" = defaultdict(list)
-        for entry in entries:
-            div = entry.get("division", 0)
-            if div < 1:
-                continue
-            groups[div].append(entry)
-        return groups
-
-    @staticmethod
     def _resolve_names(
         entries: List[Dict[str, Any]], name_map: Dict[str, str]
     ) -> None:
         for entry in entries:
             aid = entry.get("account_id", "")
-            entry["player_name"] = name_map.get(aid, "Unknown")
+            entry["player_name"] = name_map.get(aid, entry.get("player_name", "Unknown"))
+
+    @staticmethod
+    def _format_time_for_entry(entry: Dict[str, Any]) -> str:
+        raw = entry.get("time_ms", entry.get("score", 0))
+        if isinstance(raw, int) and raw > 0:
+            return format_time_ms(raw)
+        return str(raw) if raw else "-:--.---"
 
     @staticmethod
     def build_qualifier(
@@ -76,6 +71,7 @@ class COTDEmbed:
         map_info: Dict[str, Any],
         qualifier_entries: List[Dict[str, Any]],
         name_map: Dict[str, str],
+        cutoff_entry: Dict[str, Any] = None,
     ) -> discord.Embed:
         COTDEmbed._resolve_names(qualifier_entries, name_map)
 
@@ -85,25 +81,41 @@ class COTDEmbed:
             colour=COTDEmbed.BELGIAN_RED,
         )
 
-        groups = COTDEmbed._group_by_division(qualifier_entries)
-        if not groups:
+        cutoff_line = None
+        if cutoff_entry:
+            cutoff_time = COTDEmbed._format_time_for_entry(cutoff_entry)
+            cutoff_line = f"**64.** cutoff ({cutoff_time})"
+
+        by_division = defaultdict(list)
+        for entry in qualifier_entries:
+            div = entry.get("division", 0)
+            if 1 <= div <= 10:
+                by_division[div].append(entry)
+
+        all_divs = set(by_division.keys())
+        if cutoff_line:
+            all_divs.add(1)
+
+        if not all_divs:
             embed.add_field(
                 name="\u200b",
-                value=(
-                    "No Belgian players found in the Top 10 divisions for this qualifier."
-                ),
+                value="No Belgian players found in divisions 1-10.",
                 inline=False,
             )
         else:
-            for div in sorted(groups.keys()):
-                players = sorted(groups[div], key=lambda p: p["world_rank"])
+            for div in sorted(all_divs):
+                players = sorted(by_division.get(div, []), key=lambda p: p["world_rank"])
                 lines = []
                 for p in players:
-                    time_str = format_time_ms(p["time_ms"])
+                    time_str = COTDEmbed._format_time_for_entry(p)
                     name = p.get("player_name", "Unknown")
                     lines.append(
                         f"**{p['world_rank']}.** {name} ({time_str})"
                     )
+
+                if div == 1 and cutoff_line:
+                    lines.append(cutoff_line)
+
                 embed.add_field(
                     name=f"**Division {div}**",
                     value="\n".join(lines),
@@ -114,7 +126,8 @@ class COTDEmbed:
         if thumbnail:
             embed.set_thumbnail(url=thumbnail)
 
-        embed.set_footer(text="By Luckyboi61")
+        embed.set_footer(text="TrackManneke \u2022 By Luckyboi61")
+
         return embed
 
     @staticmethod
@@ -132,18 +145,21 @@ class COTDEmbed:
             colour=COTDEmbed.BELGIAN_RED,
         )
 
-        groups = COTDEmbed._group_by_division(rounds_entries)
-        if not groups:
+        by_division = defaultdict(list)
+        for entry in rounds_entries:
+            div = entry.get("division", 0)
+            if 1 <= div <= 10:
+                by_division[div].append(entry)
+
+        if not by_division:
             embed.add_field(
                 name="\u200b",
-                value=(
-                    "No Belgian players found in the Top 10 divisions for this round."
-                ),
+                value="No Belgian players found in the top 10 divisions.",
                 inline=False,
             )
         else:
-            for div in sorted(groups.keys()):
-                players = sorted(groups[div], key=lambda p: p["position"])
+            for div in sorted(by_division.keys()):
+                players = sorted(by_division[div], key=lambda p: p["position"])
                 lines = []
                 for p in players:
                     name = p.get("player_name", "Unknown")
@@ -165,5 +181,5 @@ class COTDEmbed:
         if thumbnail:
             embed.set_thumbnail(url=thumbnail)
 
-        embed.set_footer(text="By Luckyboi61")
+        embed.set_footer(text="TrackManneke \u2022 By Luckyboi61")
         return embed
