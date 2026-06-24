@@ -31,6 +31,7 @@ class Cotd(commands.Cog):
         self._state = self.STATE_IDLE
         self._current_cup: Optional[Dict[str, Any]] = None
         self._seen_completed_match_ids: Set[Any] = set()
+        self._rounds_entries_buffer: List[Dict[str, Any]] = []
         self._bg_tasks: set = set()
         self.monitor_cotd_lifecycle.start()
         logger.info("Cotd cog loaded - state machine started (IDLE)")
@@ -105,9 +106,8 @@ class Cotd(commands.Cog):
             return
 
         edition = cup.get("edition", 1)
-        cup_label = self._format_cup_label(cup.get("startDate", 0), edition)
         map_info = await self._get_map_info()
-        await self._post_qualifier(cotd, challenge_id, map_info, cup_label)
+        await self._post_qualifier(cotd, challenge_id, map_info, edition)
 
         competition = cup.get("competition", {})
         competition_id = competition.get("id")
@@ -140,9 +140,6 @@ class Cotd(commands.Cog):
         belgian_ids = {p["account_id"] for p in db.get_all_players()}
         name_map = {p["account_id"]: p["player_name"] for p in db.get_all_players()}
         edition = self._current_cup.get("edition", 1) if self._current_cup else 1
-        cup_label = self._format_cup_label(
-            self._current_cup.get("startDate", 0), edition
-        ) if self._current_cup else "COTD"
         map_info = await self._get_map_info()
 
         all_done = True
@@ -165,12 +162,23 @@ class Cotd(commands.Cog):
             result = await cotd.get_bracket_division_results(mid, div_num, belgian_ids)
             if result and result.get("entries"):
                 self._seen_completed_match_ids.add(mid)
-                await self._post_division_result(
-                    result["entries"], name_map, map_info, cup_label,
-                )
+                self._rounds_entries_buffer.extend(result["entries"])
 
-        if all_done and self._seen_completed_match_ids:
-            logger.info("All bracket matches processed, returning to IDLE")
+        if all_done:
+            if self._rounds_entries_buffer:
+                channel = await self._get_channel()
+                if channel:
+                    embed = COTDEmbed.build_rounds(
+                        edition, map_info, self._rounds_entries_buffer, name_map,
+                    )
+                    await channel.send(embed=embed)
+                    logger.info(
+                        f"COTD #{edition} consolidated rounds posted: "
+                        f"{len(self._rounds_entries_buffer)} Belgian players across "
+                        f"{len(self._seen_completed_match_ids)} divisions"
+                    )
+            else:
+                logger.info(f"COTD #{edition} bracket phase complete — no Belgian entries found")
             self._reset_state()
 
     def _reset_state(self):
@@ -178,6 +186,7 @@ class Cotd(commands.Cog):
         self._current_cup = None
         self._current_competition_id = None
         self._seen_completed_match_ids.clear()
+        self._rounds_entries_buffer.clear()
         logger.info("State → IDLE")
 
     async def _discover_belgian_players(self):
@@ -303,7 +312,7 @@ class Cotd(commands.Cog):
         cotd_client: COTDClient,
         challenge_id: int,
         map_info: Dict,
-        cup_label: str,
+        edition: int,
     ):
         db = self.bot.db
         belgian_players = db.get_all_players()
@@ -360,7 +369,7 @@ class Cotd(commands.Cog):
         cutoff_entry = cutoffs.get("div1_cutoff")
 
         embed = COTDEmbed.build_qualifier(
-            cup_label,
+            edition,
             map_info,
             qualifier_entries,
             name_map,
@@ -371,31 +380,8 @@ class Cotd(commands.Cog):
         if channel:
             await channel.send(embed=embed)
             logger.info(
-                f"{cup_label} qualifier posted: "
+                f"COTD #{edition} qualifier posted: "
                 f"{len(qualifier_entries)} Belgian players (fetched {len(all_results)} global)"
-            )
-
-    async def _post_division_result(
-        self,
-        entries: List[Dict[str, Any]],
-        name_map: Dict[str, str],
-        map_info: Dict,
-        cup_label: str,
-    ):
-        if not entries:
-            return
-        div_num = entries[0].get("division", 0)
-
-        embed = COTDEmbed.build_rounds(
-            cup_label, map_info, entries, name_map,
-        )
-
-        channel = await self._get_channel()
-        if channel:
-            await channel.send(embed=embed)
-            logger.info(
-                f"Division {div_num} bracket results posted: "
-                f"{len(entries)} Belgian players"
             )
 
     async def _post_rounds(
@@ -403,7 +389,7 @@ class Cotd(commands.Cog):
         rounds_results: List[Dict[str, str]],
         name_map: Dict[str, str],
         map_info: Dict,
-        cup_label: str,
+        edition: int,
         db,
     ):
         new_ids = [
@@ -415,14 +401,14 @@ class Cotd(commands.Cog):
             name_map.update(resolved)
 
         embed = COTDEmbed.build_rounds(
-            cup_label, map_info, rounds_results, name_map,
+            edition, map_info, rounds_results, name_map,
         )
 
         channel = await self._get_channel()
         if channel:
             await channel.send(embed=embed)
             logger.info(
-                f"{cup_label} rounds posted: "
+                f"COTD #{edition} rounds posted: "
                 f"{len(rounds_results)} Belgian players"
             )
 
@@ -503,7 +489,7 @@ class Cotd(commands.Cog):
                 await interaction.followup.send("COTD channel not configured.", ephemeral=True)
                 return
 
-            await self._post_qualifier(cotd_client, challenge_id, map_info, cup_label)
+            await self._post_qualifier(cotd_client, challenge_id, map_info, edition)
 
             if competition_id:
                 belgian_ids = {p["account_id"] for p in db.get_all_players()}
@@ -518,13 +504,13 @@ class Cotd(commands.Cog):
                             resolved = await self._resolve_new_players(new_ids, db)
                             name_map.update(resolved)
                         embed = COTDEmbed.build_rounds(
-                            cup_label, map_info, results, name_map,
+                            edition, map_info, results, name_map,
                         )
                         await channel.send(embed=embed)
                         logger.info(f"{cup_label} completed rounds posted via /cotd-results")
                 elif status["total_matches"] > 0 and not status["all_completed"]:
                     await self._send_rounds_intermediate_embed(
-                        channel, cup_label, map_info, status, name_map,
+                        channel, edition, map_info, status, name_map,
                     )
                     logger.info(f"{cup_label} intermediate rounds posted via /cotd-results")
 
@@ -568,15 +554,16 @@ class Cotd(commands.Cog):
     async def _send_rounds_intermediate_embed(
         self,
         destination,
-        cup_label: str,
+        edition: int,
         map_info: Dict,
         status: Dict,
         name_map: Dict[str, str],
     ):
         embed = discord.Embed(
-            title=f"{cup_label} - Rounds Results (In Progress)",
+            title="Cup of the Day - Rounds Results (In Progress)",
             description=COTDEmbed._build_description(map_info),
-            colour=0xFF0000,
+            colour=COTDEmbed.BELGIAN_RED,
+            timestamp=datetime.now(timezone.utc),
         )
 
         by_division: Dict[int, Dict] = {}
@@ -612,7 +599,7 @@ class Cotd(commands.Cog):
                     elif position > 0:
                         lines.append(f"**{position}.** {name}")
                     else:
-                        lines.append(name)
+                        lines.append(f"\u2014. {name}")
 
                 for p in data["in_progress"]:
                     name = name_map.get(p["account_id"], "Unknown")
@@ -632,7 +619,7 @@ class Cotd(commands.Cog):
         thumbnail = map_info.get("thumbnail_url", "")
         if thumbnail:
             embed.set_thumbnail(url=thumbnail)
-        embed.set_footer(text="By Luckyboi61")
+        embed.set_footer(text=f"By Luckyboi61 \u2022 COTD #{edition}")
 
         await destination.send(embed=embed)
 
