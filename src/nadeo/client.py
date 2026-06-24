@@ -2,13 +2,10 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import AsyncContextManager, Optional
-
 import aiohttp
-
 from .auth import NadeoAuth
 
 logger = logging.getLogger(__name__)
-
 
 class NadeoClient:
     def __init__(self, auth: NadeoAuth, user_agent: str):
@@ -47,7 +44,8 @@ class NadeoClient:
 
             async with session.request(method, url, headers=headers, **kwargs) as resp:
                 if resp.status == 401:
-                    logger.warning("Got 401 Unauthorized, refreshing token and retrying...")
+                    logger.warning("Got 401 Unauthorized, invalidating cached token and retrying...")
+                    self.auth.invalidate_token(region)
                     token = await self.auth.get_nadeo_token(region)
                     headers["Authorization"] = f"nadeo_v1 t={token}"
 
@@ -61,7 +59,7 @@ class NadeoClient:
             logger.error(f"Request timeout for {method} {url}: {e}")
             raise
         except Exception as e:
-            logger.error(f"Request failed for {method} {url}: {e}")
+            logger.warning(f"Request failed for {method} {url}: {e}")
             raise
 
     def get(
