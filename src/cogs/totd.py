@@ -61,6 +61,7 @@ class Totd(commands.Cog):
 
     async def _fetch_and_post_leaderboard(self):
         nadeo_client = self.bot.nadeo_client
+        db = self.bot.db
 
         channel = self._get_totd_channel()
         if not channel:
