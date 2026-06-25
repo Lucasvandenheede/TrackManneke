@@ -43,9 +43,9 @@ class Totd(commands.Cog):
     async def before_post_totd_leaderboard(self):
         await self.bot.wait_until_ready()
 
-    def _get_totd_channel(self) -> Optional[discord.TextChannel]:
+    async def _get_totd_channel(self) -> Optional[discord.TextChannel]:
         db = self.bot.db
-        channel_id_str = db.get_config("totd_channel_id") or config.TOTD_CHANNEL_ID
+        channel_id_str = (await db.get_config("totd_channel_id")) or config.TOTD_CHANNEL_ID
         if not channel_id_str:
             logger.error("TOTD channel ID not configured")
             return None
@@ -63,7 +63,7 @@ class Totd(commands.Cog):
         nadeo_client = self.bot.nadeo_client
         db = self.bot.db
 
-        channel = self._get_totd_channel()
+        channel = await self._get_totd_channel()
         if not channel:
             return
 
@@ -101,7 +101,7 @@ class Totd(commands.Cog):
             try:
                 names = await oauth.get_display_names(batch)
                 for aid, name in names.items():
-                    if db.save_discovered_player(aid, name):
+                    if await db.save_discovered_player(aid, name):
                         new_count += 1
             except Exception as e:
                 logger.error(f"Failed to resolve players for batch: {e}")
@@ -124,7 +124,7 @@ class Totd(commands.Cog):
 
         logger.info(f"TOTD map_uid: {map_uid}")
 
-        belgian_players = db.get_all_players()
+        belgian_players = await db.get_all_players()
         result = await totd_client.get_belgian_leaderboard(
             map_uid, belgian_players
         )
@@ -132,7 +132,7 @@ class Totd(commands.Cog):
         if result["new_player_ids"]:
             logger.info(f"Discovered {len(result['new_player_ids'])} new Belgian players, resolving names...")
             await self._resolve_and_add_players(result["new_player_ids"], db)
-            belgian_players = db.get_all_players()
+            belgian_players = await db.get_all_players()
             result = await totd_client.get_belgian_leaderboard(
                 map_uid, belgian_players
             )
@@ -157,7 +157,7 @@ class Totd(commands.Cog):
 
         try:
             db = self.bot.db
-            db.set_config("totd_channel_id", str(channel.id))
+            await db.set_config("totd_channel_id", str(channel.id))
             await interaction.response.send_message(
                 f"TOTD leaderboard channel set to {channel.mention}",
                 ephemeral=True,
@@ -183,7 +183,7 @@ class Totd(commands.Cog):
             )
             return
 
-        channel = self._get_totd_channel()
+        channel = await self._get_totd_channel()
         if not channel:
             await interaction.response.send_message(
                 "TOTD channel not configured.", ephemeral=True,
@@ -204,7 +204,7 @@ class Totd(commands.Cog):
                 )
                 return
 
-            belgian_players = db.get_all_players()
+            belgian_players = await db.get_all_players()
 
             result = await totd_client.get_belgian_leaderboard(
                 map_uid, belgian_players
@@ -213,7 +213,7 @@ class Totd(commands.Cog):
             if result["new_player_ids"]:
                 logger.info(f"Discovered {len(result['new_player_ids'])} new Belgian players")
                 await self._resolve_and_add_players(result["new_player_ids"], db)
-                belgian_players = db.get_all_players()
+                belgian_players = await db.get_all_players()
                 result = await totd_client.get_belgian_leaderboard(
                     map_uid, belgian_players
                 )

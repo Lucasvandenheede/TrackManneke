@@ -137,8 +137,9 @@ class Cotd(commands.Cog):
             return
 
         db = self.bot.db
-        belgian_ids = {p["account_id"] for p in db.get_all_players()}
-        name_map = {p["account_id"]: p["player_name"] for p in db.get_all_players()}
+        players = await db.get_all_players()
+        belgian_ids = {p["account_id"] for p in players}
+        name_map = {p["account_id"]: p["player_name"] for p in players}
         edition = self._current_cup.get("edition", 1) if self._current_cup else 1
         map_info = await self._get_map_info()
 
@@ -203,7 +204,8 @@ class Cotd(commands.Cog):
                 return
             leaderboard = await totd_client.get_totd_leaderboard(map_uid, limit=3000)
             belgian_zone_ids = await totd_client.get_belgian_zone_ids()
-            tracked_ids = {p["account_id"] for p in db.get_all_players()}
+            all_players = await db.get_all_players()
+            tracked_ids = {p["account_id"] for p in all_players}
             new_players = []
             for entry in leaderboard:
                 aid = entry["account_id"]
@@ -218,7 +220,7 @@ class Cotd(commands.Cog):
                         else:
                             names = {aid: aid for aid in batch}
                         for aid, name in names.items():
-                            db.save_discovered_player(aid, name)
+                            await db.save_discovered_player(aid, name)
                             tracked_ids.add(aid)
                             logger.info(f"Startup discovery -> tracked: {name} ({aid})")
                     except Exception as e:
@@ -257,7 +259,7 @@ class Cotd(commands.Cog):
     async def _get_channel(self) -> Optional[discord.TextChannel]:
         db = self.bot.db
         channel_id_str = (
-            db.get_config("cotd_channel_id")
+            await db.get_config("cotd_channel_id")
             or config.COTD_CHANNEL_ID
             or config.TOTD_CHANNEL_ID
         )
@@ -315,7 +317,7 @@ class Cotd(commands.Cog):
         edition: int,
     ):
         db = self.bot.db
-        belgian_players = db.get_all_players()
+        belgian_players = await db.get_all_players()
         belgian_ids = {p["account_id"] for p in belgian_players}
         name_map = {p["account_id"]: p["player_name"] for p in belgian_players}
 
@@ -427,7 +429,7 @@ class Cotd(commands.Cog):
             try:
                 names = await oauth.get_display_names(batch)
                 for aid, name in names.items():
-                    db.save_discovered_player(aid, name)
+                    await db.save_discovered_player(aid, name)
                     name_map[aid] = name
             except Exception as e:
                 logger.error(f"Failed to resolve names batch: {e}")
@@ -492,8 +494,9 @@ class Cotd(commands.Cog):
             await self._post_qualifier(cotd_client, challenge_id, map_info, edition)
 
             if competition_id:
-                belgian_ids = {p["account_id"] for p in db.get_all_players()}
-                name_map = {p["account_id"]: p["player_name"] for p in db.get_all_players()}
+                all_players = await db.get_all_players()
+                belgian_ids = {p["account_id"] for p in all_players}
+                name_map = {p["account_id"]: p["player_name"] for p in all_players}
                 status = await cotd_client.get_rounds_status(competition_id, belgian_ids)
 
                 if status["total_matches"] > 0 and status["all_completed"]:
@@ -537,7 +540,7 @@ class Cotd(commands.Cog):
 
         try:
             db = self.bot.db
-            db.set_config("cotd_channel_id", str(channel.id))
+            await db.set_config("cotd_channel_id", str(channel.id))
             await interaction.response.send_message(
                 f"COTD/COTN/COTM results channel set to {channel.mention}",
                 ephemeral=True,

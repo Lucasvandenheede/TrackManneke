@@ -2,8 +2,8 @@ name: Deploy TrackManneke Production
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - master
 
 jobs:
   deploy:
@@ -13,7 +13,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy to Google Cloud VM via SSH
+      - name: Deploy Production bot to Google Cloud VM via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.GCP_VM_IP }}
@@ -31,11 +31,15 @@ jobs:
 
             echo "DISCORD_TOKEN=${{ secrets.PROD_DISCORD_TOKEN }}" > .env
             echo "GUILD_ID=${{ secrets.PROD_GUILD_ID }}" >> .env
+            echo "ENVIRONMENT=production" >> .env
+            echo "TOTD_CHANNEL_ID=${{ secrets.PROD_TOTD_CHANNEL_ID }}" >> .env
+            echo "COTD_CHANNEL_ID=${{ secrets.PROD_COTD_CHANNEL_ID }}" >> .env
             echo "USER_AGENT=\"${{ secrets.USER_AGENT }}\"" >> .env
-            echo "UBISOFT_EMAIL=${{ secrets.UBISOFT_EMAIL }}" >> .env
-            echo "UBISOFT_PASSWORD=${{ secrets.UBISOFT_PASSWORD }}" >> .env
-            echo "NADEO_CLIENT_ID=${{ secrets.NADEO_CLIENT_ID }}" >> .env
-            echo "NADEO_CLIENT_SECRET=${{ secrets.NADEO_CLIENT_SECRET }}" >> .env
+            echo "NADEO_SERVICE_ACCOUNT_LOGIN=${{ secrets.NADEO_SERVICE_ACCOUNT_LOGIN }}" >> .env
+            echo "NADEO_SERVICE_ACCOUNT_PASSWORD=${{ secrets.NADEO_SERVICE_ACCOUNT_PASSWORD }}" >> .env
+            echo "OAUTH_CLIENT_ID=${{ secrets.OAUTH_CLIENT_ID }}" >> .env
+            echo "OAUTH_CLIENT_SECRET=${{ secrets.OAUTH_CLIENT_SECRET }}" >> .env
+            echo "TIMEZONE=${{ secrets.TIMEZONE }}" >> .env
 
             docker build -t trackmanneke-prod .
 
@@ -45,5 +49,6 @@ jobs:
             docker run -d \
               --name trackmanneke-prod \
               --restart unless-stopped \
-              -v $(pwd)/.env:/app/.env \
+              --env-file $(pwd)/.env \
+              -v trackmanneke-prod-data:/app/src/db \
               trackmanneke-prod

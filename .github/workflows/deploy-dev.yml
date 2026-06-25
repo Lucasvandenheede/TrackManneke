@@ -1,0 +1,54 @@
+name: Deploy TrackManneke Dev
+
+on:
+  push:
+    branches:
+      - dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy Dev bot to Google Cloud VM via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.GCP_VM_IP }}
+          username: ${{ secrets.GCP_SSH_USER }}
+          key: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
+          script: |
+            mkdir -p ~/trackmanneke-dev
+            cd ~/trackmanneke-dev
+
+            if [ ! -d ".git" ]; then
+              git clone https://github.com/${{ github.repository }}.git .
+            fi
+            git fetch --all
+            git checkout ${{ github.sha }}
+
+            echo "DISCORD_TOKEN=${{ secrets.DEV_DISCORD_TOKEN }}" > .env
+            echo "GUILD_ID=${{ secrets.DEV_GUILD_ID }}" >> .env
+            echo "ENVIRONMENT=development" >> .env
+            echo "TOTD_CHANNEL_ID=${{ secrets.DEV_TOTD_CHANNEL_ID }}" >> .env
+            echo "COTD_CHANNEL_ID=${{ secrets.DEV_COTD_CHANNEL_ID }}" >> .env
+            echo "USER_AGENT=\"${{ secrets.USER_AGENT }}\"" >> .env
+            echo "NADEO_SERVICE_ACCOUNT_LOGIN=${{ secrets.NADEO_SERVICE_ACCOUNT_LOGIN }}" >> .env
+            echo "NADEO_SERVICE_ACCOUNT_PASSWORD=${{ secrets.NADEO_SERVICE_ACCOUNT_PASSWORD }}" >> .env
+            echo "OAUTH_CLIENT_ID=${{ secrets.OAUTH_CLIENT_ID }}" >> .env
+            echo "OAUTH_CLIENT_SECRET=${{ secrets.OAUTH_CLIENT_SECRET }}" >> .env
+            echo "TIMEZONE=${{ secrets.TIMEZONE }}" >> .env
+
+            docker build -t trackmanneke-dev .
+
+            docker stop trackmanneke-dev || true
+            docker rm trackmanneke-dev || true
+
+            docker run -d \
+              --name trackmanneke-dev \
+              --restart unless-stopped \
+              --env-file $(pwd)/.env \
+              -v trackmanneke-dev-data:/app/src/db \
+              trackmanneke-dev
