@@ -3,15 +3,31 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from urllib.parse import urlencode
+
 import aiohttp
 
 logger = logging.getLogger(__name__)
 
+
 class OAuthClient:
+    """Trackmania OAuth client for machine-to-machine authentication.
+
+    Uses the Client Credentials OAuth flow to get generic tokens for accessing
+    public API resources like display name lookups.
+
+    Ref: https://doc.trackmania.com/web/web-services/auth/
+    """
+
     OAUTH_TOKEN_URL = "https://api.trackmania.com/api/access_token"
     DISPLAY_NAMES_URL = "https://api.trackmania.com/api/display-names"
 
     def __init__(self, client_id: str, client_secret: str):
+        """Initialize OAuthClient with OAuth credentials.
+
+        Args:
+            client_id: OAuth application ID (from api.trackmania.com)
+            client_secret: OAuth application secret
+        """
         self.client_id = client_id
         self.client_secret = client_secret
         self._access_token: Optional[str] = None
@@ -19,16 +35,26 @@ class OAuthClient:
         self._session: Optional[aiohttp.ClientSession] = None
 
     async def get_session(self) -> aiohttp.ClientSession:
+        """Get or create aiohttp ClientSession."""
         if self._session is None:
             self._session = aiohttp.ClientSession()
         return self._session
 
     async def close(self) -> None:
+        """Close the session."""
         if self._session:
             await self._session.close()
             self._session = None
 
     async def _fetch_token(self) -> Dict[str, Any]:
+        """Fetch a new OAuth access token using Client Credentials flow.
+
+        Returns:
+            Dict with access_token and expires_at
+
+        Raises:
+            Exception: If token request fails
+        """
         logger.info("Fetching OAuth token via Client Credentials flow...")
         session = await self.get_session()
 
@@ -70,6 +96,11 @@ class OAuthClient:
             raise
 
     async def get_access_token(self) -> str:
+        """Get valid OAuth access token with automatic refresh.
+
+        Returns:
+            Valid OAuth access token
+        """
         now = datetime.now()
 
         if self._access_token and self._token_expires_at:
@@ -85,6 +116,17 @@ class OAuthClient:
         return self._access_token
 
     async def get_display_names(self, account_ids: list) -> Dict[str, str]:
+        """Get display names for account IDs.
+
+        Args:
+            account_ids: List of account ID UUIDs (max 50)
+
+        Returns:
+            Dict mapping account_id -> display_name
+
+        Raises:
+            Exception: If request fails
+        """
         if not account_ids:
             return {}
 
@@ -95,6 +137,7 @@ class OAuthClient:
         session = await self.get_session()
 
         try:
+            # Build query parameters: accountId[]=id1&accountId[]=id2&...
             params = {"accountId[]": account_ids}
             query_string = urlencode(params, doseq=True)
 

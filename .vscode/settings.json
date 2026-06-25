@@ -1,9 +1,0 @@
-{
-  "chat.tools.terminal.autoApprove": {
-    "/^cd d:/Coding/TrackManneke ; python -c \"\nfrom src\\.utils\\.formatters import format_time_ms, format_rank\nprint\\('Formatters import successful'\\)\nprint\\(f'format_time_ms\\(61234\\) = \\{format_time_ms\\(61234\\)\\}'\\)\nprint\\(f'format_rank\\(42\\) = \\{format_rank\\(42\\)\\}'\\)\n\" 2>&1$/": {
-      "approve": true,
-      "matchCommandLine": true
-    },
-    "pip": true
-  }
-}
