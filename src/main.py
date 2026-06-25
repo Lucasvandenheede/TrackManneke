@@ -43,8 +43,8 @@ class TrackManneke(commands.Bot):
 
     async def _initialize_services(self):
         try:
-            self.db = Database("src/db/trackmania.db")
-            self.db.connect()
+            self.db = Database(dsn=config.DATABASE_URL)
+            await self.db.connect()
             logger.info("Database initialized")
 
             if not config.NADEO_SERVICE_ACCOUNT_LOGIN or not config.NADEO_SERVICE_ACCOUNT_PASSWORD:
@@ -74,7 +74,7 @@ class TrackManneke(commands.Bot):
 
     async def close(self):
         if self.db:
-            self.db.disconnect()
+            await self.db.disconnect()
         if self.nadeo_client:
             await self.nadeo_client.close()
         if self.oauth_client:

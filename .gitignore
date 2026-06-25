@@ -207,6 +207,10 @@ tempCodeRunnerFile.py
 # Ruff stuff:
 .ruff_cache/
 
+# Database files (untrack local SQLite to prevent overwriting cloud data)
+src/db/trackmania.db
+*.db-journal
+
 # PyPI configuration file
 .pypirc
 

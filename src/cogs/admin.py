@@ -75,8 +75,8 @@ class Admin(commands.Cog):
     async def _handle_add_player(
         self, interaction: discord.Interaction, db: Database, account_id: str
     ):
-        if db.player_exists(account_id):
-            existing = db.get_player(account_id)
+        if await db.player_exists(account_id):
+            existing = await db.get_player(account_id)
             await interaction.followup.send(
                 f"Player already tracked: **{existing['player_name']}** ({account_id})",
                 ephemeral=True,
@@ -96,10 +96,10 @@ class Admin(commands.Cog):
             return
 
         player_name = player_info["display_name"]
-        success = db.add_player(account_id, player_name)
+        success = await db.add_player(account_id, player_name)
 
         if success:
-            total = db.get_player_count()
+            total = await db.get_player_count()
             await interaction.followup.send(
                 f"Added player: **{player_name}**\n"
                 f"Total tracked: {total}",
@@ -114,7 +114,7 @@ class Admin(commands.Cog):
     async def _handle_remove_player(
         self, interaction: discord.Interaction, db: Database, account_id: str
     ):
-        player = db.get_player(account_id)
+        player = await db.get_player(account_id)
         if not player:
             await interaction.followup.send(
                 f"Player not found in tracking list: {account_id}",
@@ -122,10 +122,10 @@ class Admin(commands.Cog):
             )
             return
 
-        success = db.remove_player(account_id)
+        success = await db.remove_player(account_id)
 
         if success:
-            total = db.get_player_count()
+            total = await db.get_player_count()
             await interaction.followup.send(
                 f"Removed player: **{player['player_name']}**\n"
                 f"Total tracked: {total}",
