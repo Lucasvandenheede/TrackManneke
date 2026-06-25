@@ -1,4 +1,5 @@
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Dict, Any, List
 import discord
 import src.config as config
@@ -67,7 +68,7 @@ class COTDEmbed:
 
     @staticmethod
     def build_qualifier(
-        cup_label: str,
+        edition: int,
         map_info: Dict[str, Any],
         qualifier_entries: List[Dict[str, Any]],
         name_map: Dict[str, str],
@@ -76,9 +77,10 @@ class COTDEmbed:
         COTDEmbed._resolve_names(qualifier_entries, name_map)
 
         embed = discord.Embed(
-            title=f"{cup_label} - Qualifier Results",
+            title="Cup of the Day - Qualifier Results",
             description=COTDEmbed._build_description(map_info),
             colour=COTDEmbed.BELGIAN_RED,
+            timestamp=datetime.now(timezone.utc),
         )
 
         cutoff_line = None
@@ -126,13 +128,13 @@ class COTDEmbed:
         if thumbnail:
             embed.set_thumbnail(url=thumbnail)
 
-        embed.set_footer(text="TrackManneke \u2022 By Luckyboi61")
+        embed.set_footer(text=f"By Luckyboi61 \u2022 COTD #{edition}")
 
         return embed
 
     @staticmethod
     def build_rounds(
-        cup_label: str,
+        edition: int,
         map_info: Dict[str, Any],
         rounds_entries: List[Dict[str, Any]],
         name_map: Dict[str, str],
@@ -140,9 +142,10 @@ class COTDEmbed:
         COTDEmbed._resolve_names(rounds_entries, name_map)
 
         embed = discord.Embed(
-            title=f"{cup_label} - Rounds Results",
+            title="Cup of the Day - Rounds Results",
             description=COTDEmbed._build_description(map_info),
             colour=COTDEmbed.BELGIAN_RED,
+            timestamp=datetime.now(timezone.utc),
         )
 
         by_division = defaultdict(list)
@@ -170,7 +173,7 @@ class COTDEmbed:
                     elif position > 0:
                         lines.append(f"**{position}.** {name}")
                     else:
-                        lines.append(name)
+                        lines.append(f"\u2014. {name}")
                 embed.add_field(
                     name=f"**Division {div}**",
                     value="\n".join(lines),
@@ -181,5 +184,5 @@ class COTDEmbed:
         if thumbnail:
             embed.set_thumbnail(url=thumbnail)
 
-        embed.set_footer(text="TrackManneke \u2022 By Luckyboi61")
+        embed.set_footer(text=f"By Luckyboi61 \u2022 COTD #{edition}")
         return embed

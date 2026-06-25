@@ -1,10 +1,11 @@
+from datetime import datetime, timezone
 from typing import Dict, Any, List
 import discord
 import src.config as config
 from src.utils.formatters import format_time_ms
 
 class TOTDEmbed:
-    BELGIAN_RED = 0xF50000
+    BELGIAN_RED = 0xFF0000
     LEADERBOARD_LIMIT = 25
 
     @staticmethod
@@ -37,6 +38,7 @@ class TOTDEmbed:
             title="Track of the Day - Leaderboard",
             description=description,
             colour=TOTDEmbed.BELGIAN_RED,
+            timestamp=datetime.now(timezone.utc),
         )
 
         leaderboard_text = TOTDEmbed._format_leaderboard(belgian_entries)
@@ -45,7 +47,7 @@ class TOTDEmbed:
         if image_url:
             embed.set_thumbnail(url=image_url)
 
-        embed.set_footer(text="TrackManneke \u2022 By Luckyboi61")
+        embed.set_footer(text="By Luckyboi61")
 
         return embed
 
