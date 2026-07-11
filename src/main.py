@@ -48,7 +48,7 @@ class TrackManneke(commands.Bot):
             logger.info("Database initialized")
 
             if not config.NADEO_SERVICE_ACCOUNT_LOGIN or not config.NADEO_SERVICE_ACCOUNT_PASSWORD:
-                logger.warning("Nadeo service account credentials not configured, Nadeo client will not be available")
+                logger.warning("Nadeo service account credentials not configured, Nadeo client will not be available.")
             else:
                 auth = NadeoAuth(
                     service_account_login=config.NADEO_SERVICE_ACCOUNT_LOGIN,
