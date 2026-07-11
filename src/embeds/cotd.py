@@ -94,17 +94,22 @@ class COTDEmbed:
             if 1 <= div <= 10:
                 by_division[div].append(entry)
 
-        all_divs = set(by_division.keys())
-        if cutoff_line:
-            all_divs.add(1)
-
-        if not all_divs:
+        if not by_division:
             embed.add_field(
                 name="\u200b",
-                value="No Belgian players found in divisions 1-10.",
+                value="No Belgian players found in the top 10 divisions.",
                 inline=False,
             )
+            if cutoff_line:
+                embed.add_field(
+                    name="**Division 1**",
+                    value=cutoff_line,
+                    inline=False,
+                )
         else:
+            all_divs = set(by_division.keys())
+            if cutoff_line:
+                all_divs.add(1)
             for div in sorted(all_divs):
                 players = sorted(by_division.get(div, []), key=lambda p: p["world_rank"])
                 lines = []
