@@ -13,7 +13,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy Production bot to Google Cloud VM via SSH
+      - name: Prepare repository on VM
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.GCP_VM_IP }}
@@ -22,24 +22,46 @@ jobs:
           script: |
             mkdir -p ~/trackmanneke-production
             cd ~/trackmanneke-production
-
             if [ ! -d ".git" ]; then
               git clone https://github.com/${{ github.repository }}.git .
             fi
             git fetch --all
             git checkout ${{ github.sha }}
 
-            echo "DISCORD_TOKEN=${{ secrets.PROD_DISCORD_TOKEN }}" > .env
-            echo "GUILD_ID=${{ secrets.PROD_GUILD_ID }}" >> .env
-            echo "ENVIRONMENT=production" >> .env
-            echo "TOTD_CHANNEL_ID=${{ secrets.PROD_TOTD_CHANNEL_ID }}" >> .env
-            echo "COTD_CHANNEL_ID=${{ secrets.PROD_COTD_CHANNEL_ID }}" >> .env
-            echo "USER_AGENT=\"${{ secrets.USER_AGENT }}\"" >> .env
-            echo "NADEO_SERVICE_ACCOUNT_LOGIN=${{ secrets.NADEO_SERVICE_ACCOUNT_LOGIN }}" >> .env
-            echo "NADEO_SERVICE_ACCOUNT_PASSWORD=${{ secrets.NADEO_SERVICE_ACCOUNT_PASSWORD }}" >> .env
-            echo "OAUTH_CLIENT_ID=${{ secrets.OAUTH_CLIENT_ID }}" >> .env
-            echo "OAUTH_CLIENT_SECRET=${{ secrets.OAUTH_CLIENT_SECRET }}" >> .env
-            echo "TIMEZONE=${{ secrets.TIMEZONE }}" >> .env
+      - name: Write .env file
+        run: |
+          cat > .env << 'EOF'
+          DISCORD_TOKEN=${{ secrets.PROD_DISCORD_TOKEN }}
+          GUILD_ID=${{ secrets.PROD_GUILD_ID }}
+          ENVIRONMENT=production
+          TOTD_CHANNEL_ID=${{ secrets.PROD_TOTD_CHANNEL_ID }}
+          COTD_CHANNEL_ID=${{ secrets.PROD_COTD_CHANNEL_ID }}
+          USER_AGENT=${{ secrets.USER_AGENT }}
+          NADEO_SERVICE_ACCOUNT_LOGIN=${{ secrets.NADEO_SERVICE_ACCOUNT_LOGIN }}
+          NADEO_SERVICE_ACCOUNT_PASSWORD=${{ secrets.NADEO_SERVICE_ACCOUNT_PASSWORD }}
+          OAUTH_CLIENT_ID=${{ secrets.OAUTH_CLIENT_ID }}
+          OAUTH_CLIENT_SECRET=${{ secrets.OAUTH_CLIENT_SECRET }}
+          TIMEZONE=${{ secrets.TIMEZONE }}
+          EOF
+
+      - name: Copy .env to VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.GCP_VM_IP }}
+          username: ${{ secrets.GCP_SSH_USER }}
+          key: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
+          source: ".env"
+          target: "~/trackmanneke-production/"
+          strip_components: 0
+
+      - name: Build and deploy container
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.GCP_VM_IP }}
+          username: ${{ secrets.GCP_SSH_USER }}
+          key: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
+          script: |
+            cd ~/trackmanneke-production
 
             docker build -t trackmanneke-prod .
 
