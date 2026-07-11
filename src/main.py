@@ -61,7 +61,7 @@ class TrackManneke(commands.Bot):
                 logger.info("Nadeo client initialized")
 
             if not config.OAUTH_CLIENT_ID or not config.OAUTH_CLIENT_SECRET:
-                logger.warning("OAuth credentials not configured, cannot fetch display names")
+                logger.warning("OAuth credentials not configured, cannot fetch display names.")
             else:
                 self.oauth_client = OAuthClient(
                     client_id=config.OAUTH_CLIENT_ID,
