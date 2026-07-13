@@ -167,7 +167,7 @@ class COTDEmbed:
             )
         else:
             for div in sorted(by_division.keys()):
-                players = sorted(by_division[div], key=lambda p: p["position"])
+                players = sorted(by_division[div], key=lambda p: (1 if p["position"] == 0 else 0, p["position"] if p["position"] > 0 else 0))
                 lines = []
                 for p in players:
                     name = p.get("player_name", "Unknown")

@@ -593,7 +593,7 @@ class Cotd(commands.Cog):
                 data = by_division[div]
                 lines = []
 
-                for p in sorted(data["completed"], key=lambda x: x["position"]):
+                for p in sorted(data["completed"], key=lambda x: (1 if x["position"] == 0 else 0, x["position"] if x["position"] > 0 else 0)):
                     name = name_map.get(p["account_id"], "Unknown")
                     position = p["position"]
                     emoji = COTDEmbed.PODIUM_EMOJIS.get(position)
