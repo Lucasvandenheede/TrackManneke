@@ -563,7 +563,7 @@ class Cotd(commands.Cog):
         name_map: Dict[str, str],
     ):
         embed = discord.Embed(
-            title="Cup of the Day - Rounds Results (In Progress)",
+            title=f"{COTDEmbed._cup_name(edition)} - Rounds Results (In Progress)",
             description=COTDEmbed._build_description(map_info),
             colour=COTDEmbed.BELGIAN_RED,
             timestamp=datetime.now(timezone.utc),

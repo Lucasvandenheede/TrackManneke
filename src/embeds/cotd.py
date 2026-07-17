@@ -9,6 +9,12 @@ from src.utils.formatters import format_time_ms
 class COTDEmbed:
     BELGIAN_RED = 0xFF0000
 
+    CUP_NAMES = {1: "Cup of the Day", 2: "Cup of the Night", 3: "Cup of the Morning"}
+
+    @staticmethod
+    def _cup_name(edition: int) -> str:
+        return COTDEmbed.CUP_NAMES.get(edition, "Cup of the Day")
+
     PODIUM_EMOJIS = {
         1: "\U0001f3c6",
         2: "\U0001f948",
@@ -77,7 +83,7 @@ class COTDEmbed:
         COTDEmbed._resolve_names(qualifier_entries, name_map)
 
         embed = discord.Embed(
-            title="Cup of the Day - Qualifier Results",
+            title=f"{COTDEmbed._cup_name(edition)} - Qualifier Results",
             description=COTDEmbed._build_description(map_info),
             colour=COTDEmbed.BELGIAN_RED,
             timestamp=datetime.now(timezone.utc),
@@ -147,7 +153,7 @@ class COTDEmbed:
         COTDEmbed._resolve_names(rounds_entries, name_map)
 
         embed = discord.Embed(
-            title="Cup of the Day - Rounds Results",
+            title=f"{COTDEmbed._cup_name(edition)} - Rounds Results",
             description=COTDEmbed._build_description(map_info),
             colour=COTDEmbed.BELGIAN_RED,
             timestamp=datetime.now(timezone.utc),
