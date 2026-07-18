@@ -11,6 +11,8 @@ if ENV_FILE:
     dotenv_path = BASE_DIR / ENV_FILE
 elif ENVIRONMENT in {"production", "prod"}:
     dotenv_path = BASE_DIR / ".env.production"
+elif ENVIRONMENT == "dev":
+    dotenv_path = BASE_DIR / ".env.dev"
 else:
     dotenv_path = BASE_DIR / ".env"
 
