@@ -92,7 +92,7 @@ class COTDEmbed:
         cutoff_line = None
         if cutoff_entry:
             cutoff_time = COTDEmbed._format_time_for_entry(cutoff_entry)
-            cutoff_line = f"**64.** cutoff ({cutoff_time})"
+            cutoff_line = f"**64.** **cutoff ({cutoff_time})**"
 
         by_division = defaultdict(list)
         for entry in qualifier_entries:

@@ -29,6 +29,8 @@ class Totd(commands.Cog):
 
     @tasks.loop(minutes=1.0)
     async def post_totd_leaderboard(self):
+        if await self.bot.is_posting_frozen():
+            return
         now_paris = datetime.now(PARIS_TZ)
         if now_paris.hour != 18 or now_paris.minute != 59:
             return
