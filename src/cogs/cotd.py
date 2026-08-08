@@ -61,6 +61,8 @@ class Cotd(commands.Cog):
         nadeo = self.bot.nadeo_client
         if not nadeo:
             return
+        if await self.bot.is_posting_frozen():
+            return
         cotd = COTDClient(nadeo)
 
         try:

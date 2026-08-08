@@ -30,6 +30,8 @@ class TrackManneke(commands.Bot):
         await self.load_extension("src.cogs.admin")
         await self.load_extension("src.cogs.totd")
         await self.load_extension("src.cogs.cotd")
+        if config.IS_DEV:
+            await self.load_extension("src.cogs.posting")
         print("Cogs loaded successfully.")
 
         if config.GUILD_ID:
@@ -80,6 +82,17 @@ class TrackManneke(commands.Bot):
         if self.oauth_client:
             await self.oauth_client.close()
         await super().close()
+
+    async def is_posting_frozen(self) -> bool:
+        if not self.db:
+            return False
+        value = await self.db.get_config("posting_frozen", "false")
+        return str(value).strip().lower() == "true"
+
+    async def set_posting_frozen(self, frozen: bool) -> None:
+        if not self.db:
+            return
+        await self.db.set_config("posting_frozen", "true" if frozen else "false")
 
     async def on_ready(self):
         print(f"Bot is online: {self.user.name} (ID: {self.user.id})")
