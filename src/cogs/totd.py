@@ -181,18 +181,17 @@ class Totd(commands.Cog):
         if not nadeo_client:
             await interaction.response.send_message(
                 "Nadeo client is not initialized. Check server configuration.",
-                ephemeral=True,
             )
             return
 
         channel = await self._get_totd_channel()
         if not channel:
             await interaction.response.send_message(
-                "TOTD channel not configured.", ephemeral=True,
+                "TOTD channel not configured.",
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer()
 
         try:
             totd_client = TOTDClient(nadeo_client)
@@ -202,7 +201,7 @@ class Totd(commands.Cog):
             map_uid = totd_data.get("map_uid")
             if not map_uid:
                 await interaction.followup.send(
-                    "Could not fetch current TOTD data.", ephemeral=True
+                    "Could not fetch current TOTD data."
                 )
                 return
 
@@ -224,15 +223,17 @@ class Totd(commands.Cog):
 
             embed = TOTDEmbed.build(totd_data, entries)
 
-            await channel.send(embed=embed)
+            await channel.send(
+                content=f"TOTD leaderboard requested by {interaction.user.mention}",
+                embed=embed,
+            )
             await interaction.followup.send(
-                f"Leaderboard posted to {channel.mention}.", ephemeral=True,
+                f"Leaderboard posted to {channel.mention}.",
             )
         except Exception as e:
             logger.error(f"Error in /totd-leaderboard: {e}")
             await interaction.followup.send(
                 f"An error occurred while fetching the leaderboard: {str(e)}",
-                ephemeral=True,
             )
 
     @totd_leaderboard.error
@@ -242,14 +243,13 @@ class Totd(commands.Cog):
         if isinstance(error, app_commands.CommandOnCooldown):
             retry_after = int(error.retry_after)
             await interaction.response.send_message(
-                f"Command on cooldown. Try again in **{retry_after} seconds**.",
-                ephemeral=True,
+                f"Command on cooldown. Try again in **{retry_after} seconds**."
             )
         else:
             logger.error(f"Unexpected error in /totd-leaderboard: {error}")
             if not interaction.response.is_done():
                 await interaction.response.send_message(
-                    "An unexpected error occurred.", ephemeral=True
+                    "An unexpected error occurred."
                 )
 
 async def setup(bot: commands.Bot):
