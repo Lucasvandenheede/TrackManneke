@@ -23,6 +23,10 @@ class Cotd(commands.Cog):
     RD_CUP_RETRIES = 3
     RD_CUP_DELAY = 10
     RD_ROUNDS_DELAY = 30
+    QUALIFIER_MAX_ATTEMPTS = 5
+    QUALIFIER_RETRY_BASE_SECONDS = 30
+    BRACKET_TIMEOUT_SECONDS = 3 * 60 * 60
+    STATE_HEARTBEAT_SECONDS = 5 * 60
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -33,6 +37,10 @@ class Cotd(commands.Cog):
         self._seen_completed_match_ids: Set[Any] = set()
         self._rounds_entries_buffer: List[Dict[str, Any]] = []
         self._bg_tasks: set = set()
+        self._qualifier_attempts = 0
+        self._qualifier_retry_at = 0.0
+        self._bracket_deadline = 0.0
+        self._last_state_heartbeat = 0.0
         self.monitor_cotd_lifecycle.start()
         logger.info("Cotd cog loaded - state machine started (IDLE)")
 
@@ -58,6 +66,11 @@ class Cotd(commands.Cog):
             await self._transition_to_qualifier(cup)
 
     async def _tick_state_machine(self):
+        now = datetime.now(timezone.utc).timestamp()
+        if now - self._last_state_heartbeat >= self.STATE_HEARTBEAT_SECONDS:
+            logger.info("COTD lifecycle heartbeat: state=%s", self._state)
+            self._last_state_heartbeat = now
+
         nadeo = self.bot.nadeo_client
         if not nadeo:
             return
@@ -91,6 +104,8 @@ class Cotd(commands.Cog):
     async def _transition_to_qualifier(self, cup: Dict[str, Any]):
         self._state = self.STATE_QUALIFIER
         self._current_cup = cup
+        self._qualifier_attempts = 0
+        self._qualifier_retry_at = 0.0
         logger.info(f"State → QUALIFIER (edition {cup.get('edition', 1)})")
 
     async def _tick_qualifier(self, cotd: COTDClient):
@@ -107,9 +122,39 @@ class Cotd(commands.Cog):
         if challenge_end and challenge_end > datetime.now(timezone.utc).timestamp():
             return
 
+        now = datetime.now(timezone.utc).timestamp()
+        if now < self._qualifier_retry_at:
+            return
+
         edition = cup.get("edition", 1)
-        map_info = await self._get_map_info()
-        await self._post_qualifier(cotd, challenge_id, map_info, edition)
+        try:
+            map_info = await self._get_map_info()
+            posted = await self._post_qualifier(cotd, challenge_id, map_info, edition)
+        except Exception as e:
+            posted = False
+            logger.warning("COTD qualifier fetch/post failed (challenge %s): %s", challenge_id, e)
+
+        if not posted:
+            self._qualifier_attempts += 1
+            if self._qualifier_attempts >= self.QUALIFIER_MAX_ATTEMPTS:
+                logger.error(
+                    "COTD qualifier abandoned after %s failed/empty attempts (challenge %s); returning to IDLE",
+                    self._qualifier_attempts,
+                    challenge_id,
+                )
+                self.last_challenge_id = challenge_id
+                self._reset_state()
+                return
+            delay = self.QUALIFIER_RETRY_BASE_SECONDS * (2 ** (self._qualifier_attempts - 1))
+            self._qualifier_retry_at = now + delay
+            logger.warning(
+                "COTD qualifier returned no data; retry %s/%s in %ss (challenge %s)",
+                self._qualifier_attempts + 1,
+                self.QUALIFIER_MAX_ATTEMPTS,
+                delay,
+                challenge_id,
+            )
+            return
 
         competition = cup.get("competition", {})
         competition_id = competition.get("id")
@@ -118,11 +163,24 @@ class Cotd(commands.Cog):
             self._seen_completed_match_ids.clear()
             self._state = self.STATE_BRACKET_PLAY
             self.last_challenge_id = challenge_id
+            try:
+                end_ts = float(challenge_end or 0)
+            except (TypeError, ValueError):
+                end_ts = 0
+            self._bracket_deadline = max(now, end_ts) + self.BRACKET_TIMEOUT_SECONDS
             logger.info(f"State → BRACKET_PLAY (competition {competition_id})")
         else:
             self._reset_state()
 
     async def _tick_bracket(self, cotd: COTDClient):
+        if self._bracket_deadline and datetime.now(timezone.utc).timestamp() >= self._bracket_deadline:
+            logger.warning(
+                "COTD bracket phase timed out for competition %s; resetting lifecycle to IDLE",
+                getattr(self, "_current_competition_id", None),
+            )
+            self._reset_state()
+            return
+
         comp_id = getattr(self, "_current_competition_id", None)
         if not comp_id:
             self._reset_state()
@@ -190,6 +248,9 @@ class Cotd(commands.Cog):
         self._current_competition_id = None
         self._seen_completed_match_ids.clear()
         self._rounds_entries_buffer.clear()
+        self._qualifier_attempts = 0
+        self._qualifier_retry_at = 0.0
+        self._bracket_deadline = 0.0
         logger.info("State → IDLE")
 
     async def _discover_belgian_players(self):
@@ -317,7 +378,7 @@ class Cotd(commands.Cog):
         challenge_id: int,
         map_info: Dict,
         edition: int,
-    ):
+    ) -> bool:
         db = self.bot.db
         belgian_players = await db.get_all_players()
         belgian_ids = {p["account_id"] for p in belgian_players}
@@ -326,6 +387,9 @@ class Cotd(commands.Cog):
         all_results = await cotd_client.get_all_qualifier_results(
             challenge_id
         )
+        if not all_results:
+            logger.warning("COTD qualifier leaderboard is empty for challenge %s", challenge_id)
+            return False
 
         unknown_ids = [
             e["account_id"] for e in all_results
@@ -387,6 +451,8 @@ class Cotd(commands.Cog):
                 f"COTD #{edition} qualifier posted: "
                 f"{len(qualifier_entries)} Belgian players (fetched {len(all_results)} global)"
             )
+            return True
+        return False
 
     async def _post_rounds(
         self,

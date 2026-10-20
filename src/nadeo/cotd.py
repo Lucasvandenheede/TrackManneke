@@ -174,10 +174,9 @@ class COTDClient:
         )
         async with self.nadeo_client.get(url) as resp:
             if resp.status != 200:
-                logger.warning(
+                raise RuntimeError(
                     f"Failed to fetch challenge leaderboard at offset {offset}: {resp.status}"
                 )
-                return []
             data = await resp.json()
 
         results = data.get("results", [])
