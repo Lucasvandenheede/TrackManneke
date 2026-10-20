@@ -223,10 +223,7 @@ class Totd(commands.Cog):
 
             embed = TOTDEmbed.build(totd_data, entries)
 
-            await channel.send(
-                content=f"TOTD leaderboard requested by {interaction.user.mention}",
-                embed=embed,
-            )
+            await channel.send(embed=embed)
             await interaction.followup.send(
                 f"Leaderboard posted to {channel.mention}.",
             )
