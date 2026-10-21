@@ -101,19 +101,24 @@ async def create_tournament(db, *, guild_id: int, title: str, description: str,
 
 
 async def delete_tournament(db, tournament_id: int) -> None:
-    await db._conn.execute(
-        f"DELETE FROM tournaments WHERE id = {_placeholder(db, 1)}", tournament_id
-    )
-    if not db._is_pg:
+    if db._is_pg:
+        await db._conn.execute("DELETE FROM tournaments WHERE id = $1", tournament_id)
+    else:
+        await db._conn.execute("DELETE FROM tournaments WHERE id = ?", (tournament_id,))
         await db._conn.commit()
 
 
 async def set_message_id(db, tournament_id: int, message_id: int) -> None:
-    await db._conn.execute(
-        f"UPDATE tournaments SET message_id = {_placeholder(db, 1)} "
-        f"WHERE id = {_placeholder(db, 2)}", message_id, tournament_id
-    )
-    if not db._is_pg:
+    if db._is_pg:
+        await db._conn.execute(
+            "UPDATE tournaments SET message_id = $1 WHERE id = $2",
+            message_id, tournament_id,
+        )
+    else:
+        await db._conn.execute(
+            "UPDATE tournaments SET message_id = ? WHERE id = ?",
+            (message_id, tournament_id),
+        )
         await db._conn.commit()
 
 

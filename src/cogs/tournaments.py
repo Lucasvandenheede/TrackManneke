@@ -44,7 +44,66 @@ def _parse_datetime(value: str, *, date_is_end_of_day: bool = False) -> datetime
 
 
 def parse_sessions(value: str) -> list[dict[str, str]]:
-    """Parse semicolon-separated ISO start/end date-time pairs."""
+    """Parse explicit ISO sessions or a compact list of dates and shared hours.
+
+    Compact example: ``5-6 and 12-13 December 2026 (13:00-16:30)``.
+    """
+    compact = re.fullmatch(
+        r"\s*(.*?)\s*(?:\()?\s*(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*\)?\s*",
+        value,
+    )
+    if compact:
+        date_part, start_time, end_time = compact.groups()
+        # Require a month name and year so the shorthand is unambiguous.
+        match = re.fullmatch(
+            r"\s*(.*?)\s+([A-Za-z]+)\s+(\d{4})\s*", date_part
+        )
+        if match:
+            days_part, month_name, year_text = match.groups()
+            try:
+                month = datetime.strptime(month_name, "%B").month
+            except ValueError:
+                try:
+                    month = datetime.strptime(month_name, "%b").month
+                except ValueError as exc:
+                    raise ValueError(f"Unknown month name: {month_name!r}.") from exc
+            year = int(year_text)
+            day_tokens = re.findall(r"\d{1,2}(?:\s*-\s*\d{1,2})?", days_part)
+            residue = re.sub(r"\d{1,2}(?:\s*-\s*\d{1,2})?", "", days_part)
+            if not day_tokens or residue.strip(" ,&and"):
+                raise ValueError(
+                    "Use dates like `5-6 and 12-13 December 2026 (13:00-16:30)`."
+                )
+            days = []
+            for token in day_tokens:
+                bounds = [int(part.strip()) for part in token.split("-")]
+                if len(bounds) == 1:
+                    days.append(bounds[0])
+                elif bounds[1] < bounds[0] or bounds[1] - bounds[0] > 30:
+                    raise ValueError("Date ranges must go from an earlier day to a later day.")
+                else:
+                    days.extend(range(bounds[0], bounds[1] + 1))
+            sessions = []
+            for day in days:
+                try:
+                    start = datetime.strptime(
+                        f"{year}-{month}-{day} {start_time}", "%Y-%m-%d %H:%M"
+                    ).replace(tzinfo=_event_timezone())
+                    end = datetime.strptime(
+                        f"{year}-{month}-{day} {end_time}", "%Y-%m-%d %H:%M"
+                    ).replace(tzinfo=_event_timezone())
+                except ValueError as exc:
+                    raise ValueError(f"Invalid date or time in the schedule: {exc}") from exc
+                if end <= start:
+                    raise ValueError("Every schedule end must be after its start.")
+                sessions.append({
+                    "start": start.astimezone(timezone.utc).isoformat(),
+                    "end": end.astimezone(timezone.utc).isoformat(),
+                })
+            if len(sessions) > 10:
+                raise ValueError("Enter no more than 10 event sessions.")
+            return sessions
+
     sessions = []
     for entry in value.split(";"):
         entry = entry.strip()
@@ -241,7 +300,7 @@ class TournamentSetupModal(discord.ui.Modal, title="Create a tournament"):
     sessions_input = discord.ui.TextInput(
         label="Schedule sessions", style=discord.TextStyle.paragraph,
         max_length=1000,
-        placeholder="2026-12-05 13:00 - 2026-12-05 16:30; ...",
+        placeholder="5-6 and 12-13 December 2026 (13:00-16:30)",
     )
     deadline_input = discord.ui.TextInput(
         label="Registration deadline", max_length=30,
