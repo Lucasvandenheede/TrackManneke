@@ -242,7 +242,11 @@ def build_announcement_embed(event: dict, registrations: list[dict]) -> discord.
         line = f"**{local_start.strftime('%d %B %Y')}** · <t:{int(start.timestamp())}:t>"
         if session.get("end"):
             end = datetime.fromisoformat(session["end"])
-            line += f"–<t:{int(end.timestamp())}:t>"
+            local_end = end.astimezone(_event_timezone())
+            if local_end.date() != local_start.date():
+                line += f" – **{local_end.strftime('%d %B %Y')}** · <t:{int(end.timestamp())}:t>"
+            else:
+                line += f"–<t:{int(end.timestamp())}:t>"
         schedule_lines.append(line)
     embed.add_field(
         name="⏳ Registration deadline",

@@ -144,6 +144,29 @@ def test_announcement_shows_only_the_start_when_no_end_is_given(monkeypatch):
     assert "–" not in date_value
 
 
+def test_announcement_shows_end_date_for_overnight_session(monkeypatch):
+    monkeypatch.setattr(tournaments.config, "TIMEZONE", "Europe/Brussels")
+    event = {
+        "title": "TFH 24H #5",
+        "description": "",
+        "sessions": json.dumps(
+            tournaments.parse_sessions("14-11-2026 14:30 - 15-11-2026 15:00")
+        ),
+        "deadline": "2026-11-07T13:30:00+00:00",
+        "team_size": "2-6",
+        "status": "open",
+    }
+
+    embed = tournaments.build_announcement_embed(event, [])
+
+    date_value = next(field.value for field in embed.fields if field.name == "📅 Dates")
+    session = json.loads(event["sessions"])[0]
+    assert "**14 November 2026**" in date_value
+    assert "**15 November 2026**" in date_value
+    assert f"<t:{int(datetime.fromisoformat(session['start']).timestamp())}:t>" in date_value
+    assert f"<t:{int(datetime.fromisoformat(session['end']).timestamp())}:t>" in date_value
+
+
 @pytest.mark.asyncio
 async def test_sqlite_tournament_publish_and_registration_persistence(tmp_path):
     db = Database(db_path=str(tmp_path / "tournament.sqlite3"), dsn="")
