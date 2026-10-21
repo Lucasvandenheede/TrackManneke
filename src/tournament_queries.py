@@ -17,7 +17,7 @@ async def init_tournament_tables(db) -> None:
                 description TEXT NOT NULL,
                 sessions TEXT NOT NULL,
                 deadline TEXT NOT NULL,
-                team_size INTEGER NOT NULL,
+                team_size TEXT NOT NULL,
                 channel_id BIGINT NOT NULL,
                 role_id BIGINT NOT NULL,
                 message_id BIGINT,
@@ -37,6 +37,10 @@ async def init_tournament_tables(db) -> None:
                 PRIMARY KEY (tournament_id, user_id)
             )
         """)
+        await db._conn.execute("""
+            ALTER TABLE tournaments
+            ALTER COLUMN team_size TYPE TEXT USING team_size::text
+        """)
     else:
         await db._conn.executescript("""
             PRAGMA foreign_keys = ON;
@@ -47,7 +51,7 @@ async def init_tournament_tables(db) -> None:
                 description TEXT NOT NULL,
                 sessions TEXT NOT NULL,
                 deadline TEXT NOT NULL,
-                team_size INTEGER NOT NULL,
+                team_size TEXT NOT NULL,
                 channel_id INTEGER NOT NULL,
                 role_id INTEGER NOT NULL,
                 message_id INTEGER,
@@ -77,7 +81,7 @@ def _now_iso() -> str:
 
 
 async def create_tournament(db, *, guild_id: int, title: str, description: str,
-                            sessions: str, deadline: str, team_size: int,
+                            sessions: str, deadline: str, team_size: str,
                             channel_id: int, role_id: int, created_by: int) -> int:
     values = (guild_id, title, description, sessions, deadline, team_size,
               channel_id, role_id, created_by)

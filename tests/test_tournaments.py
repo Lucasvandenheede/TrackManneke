@@ -9,6 +9,20 @@ from src.cogs import tournaments
 from src.db.database import Database
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("6", "6"), ("3-5", "3-5"), (" 3 - 5 ", "3-5"), ("4-4", "4")],
+)
+def test_parse_team_size_accepts_fixed_sizes_and_ranges(value, expected):
+    assert tournaments.parse_team_size(value) == expected
+
+
+@pytest.mark.parametrize("value", ["0", "5-3", "1-100", "three", "3-5-7"])
+def test_parse_team_size_rejects_invalid_sizes(value):
+    with pytest.raises(ValueError):
+        tournaments.parse_team_size(value)
+
+
 def test_parse_sessions_accepts_one_day_and_time_range_per_line(monkeypatch):
     monkeypatch.setattr(tournaments.config, "TIMEZONE", "Europe/Brussels")
 
@@ -133,7 +147,7 @@ async def test_sqlite_tournament_publish_and_registration_persistence(tmp_path):
             description="Join a Belgian team.",
             sessions="[]",
             deadline="2026-12-04T12:00:00+00:00",
-            team_size=6,
+            team_size="3-5",
             channel_id=456,
             role_id=789,
             created_by=987,
@@ -155,6 +169,7 @@ async def test_sqlite_tournament_publish_and_registration_persistence(tmp_path):
         event = await tq.get_tournament(db, tournament_id)
         registrations = await tq.get_registrations(db, tournament_id)
         assert event["message_id"] == 654
+        assert event["team_size"] == "3-5"
         assert registrations == [{
             "user_id": 321,
             "display_name": "Luckyboi61",

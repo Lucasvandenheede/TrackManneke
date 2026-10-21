@@ -22,6 +22,18 @@ RESPONSES = {
 }
 
 
+def parse_team_size(value: str) -> str:
+    """Validate and normalize a fixed team size or inclusive size range."""
+    match = re.fullmatch(r"\s*(\d{1,2})(?:\s*-\s*(\d{1,2}))?\s*", value)
+    if match is None:
+        raise ValueError("Enter a team size like `6` or a range like `3-5`.")
+    minimum = int(match.group(1))
+    maximum = int(match.group(2) or minimum)
+    if not 1 <= minimum <= maximum <= 99:
+        raise ValueError("Team sizes must be between 1 and 99, with the smaller size first.")
+    return str(minimum) if minimum == maximum else f"{minimum}-{maximum}"
+
+
 def _event_timezone() -> ZoneInfo:
     try:
         return ZoneInfo(config.TIMEZONE)
@@ -286,7 +298,7 @@ class TournamentPreviewView(discord.ui.View):
                  channel: discord.TextChannel, role_id: Optional[int],
                  new_role_name: Optional[str], announcement_role: Optional[discord.Role],
                  title: str, description: str,
-                 sessions: list[dict[str, str]], deadline: str, team_size: int):
+                 sessions: list[dict[str, str]], deadline: str, team_size: str):
         super().__init__(timeout=300)
         self.cog = cog
         self.user_id = user_id
@@ -451,23 +463,29 @@ class TournamentDeleteView(discord.ui.View):
 
 
 class TournamentSetupModal(discord.ui.Modal, title="Create a tournament"):
-    title_input = discord.ui.TextInput(label="Tournament title", max_length=100)
+    title_input = discord.ui.TextInput(
+        label="Tournament title", max_length=100,
+        placeholder="e.g. TSCC Fall 2026",
+    )
     description_input = discord.ui.TextInput(
         label="Description", style=discord.TextStyle.paragraph,
         required=False, max_length=1000,
-        placeholder="Join a Belgian team for this tournament",
+        placeholder="What should players know? e.g. Info about the tournament, rules, or a link.",
+    )
+    team_size_input = discord.ui.TextInput(
+        label="Team size", max_length=5,
+        placeholder="3 players, or a range like 3-5",
     )
     sessions_input = discord.ui.TextInput(
         label="Schedule sessions", style=discord.TextStyle.paragraph,
         max_length=1000,
-        placeholder="One per line: 05-12-2026 13:00 - 16:30",
+        placeholder="One per line, e.g. 05-12-2026 13:00 - 16:30",
     )
     deadline_input = discord.ui.TextInput(
         label="Registration deadline", max_length=30,
         required=False,
-        placeholder="Optional; blank = 1 hour before the first date",
+        placeholder="e.g. 27-11-2026 23:59; blank = 1 hour before the first session",
     )
-    team_size_input = discord.ui.TextInput(label="Players per team", max_length=2, placeholder="6")
 
     def __init__(self, cog: "Tournaments", *, channel: discord.TextChannel,
                  role: Optional[discord.Role], new_role_name: Optional[str],
@@ -490,9 +508,7 @@ class TournamentSetupModal(discord.ui.Modal, title="Create a tournament"):
             title = self.title_input.value.strip()
             if not title:
                 raise ValueError("Tournament title cannot be empty.")
-            team_size = int(self.team_size_input.value)
-            if not 1 <= team_size <= 99:
-                raise ValueError("Players per team must be between 1 and 99.")
+            team_size = parse_team_size(self.team_size_input.value)
             sessions = parse_sessions(self.sessions_input.value)
             deadline_dt = resolve_deadline(self.deadline_input.value, sessions)
             now = datetime.now(timezone.utc)
