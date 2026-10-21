@@ -108,6 +108,16 @@ def test_announcement_ping_only_allows_the_selected_role():
     assert allowed_mentions.to_dict() == {"roles": [123], "parse": []}
 
 
+def test_announcement_ping_allows_two_selected_roles_without_duplicate_pings():
+    first = SimpleNamespace(id=123, mention="<@&123>")
+    second = SimpleNamespace(id=456, mention="<@&456>")
+
+    content, allowed_mentions = tournaments._announcement_ping(first, second, first)
+
+    assert content == "<@&123>\n<@&456>\n"
+    assert allowed_mentions.to_dict() == {"roles": [123, 456], "parse": []}
+
+
 def test_announcement_ping_is_empty_when_no_role_is_selected():
     content, allowed_mentions = tournaments._announcement_ping(None)
 
@@ -132,6 +142,29 @@ def test_announcement_shows_only_the_start_when_no_end_is_given(monkeypatch):
     start_timestamp = int(datetime.fromisoformat(json.loads(event["sessions"])[0]["start"]).timestamp())
     assert f"<t:{start_timestamp}:t>" in date_value
     assert "–" not in date_value
+
+
+def test_announcement_shows_end_date_for_overnight_session(monkeypatch):
+    monkeypatch.setattr(tournaments.config, "TIMEZONE", "Europe/Brussels")
+    event = {
+        "title": "TFH 24H #5",
+        "description": "",
+        "sessions": json.dumps(
+            tournaments.parse_sessions("14-11-2026 14:30 - 15-11-2026 15:00")
+        ),
+        "deadline": "2026-11-07T13:30:00+00:00",
+        "team_size": "2-6",
+        "status": "open",
+    }
+
+    embed = tournaments.build_announcement_embed(event, [])
+
+    date_value = next(field.value for field in embed.fields if field.name == "📅 Dates")
+    session = json.loads(event["sessions"])[0]
+    assert "**14 November 2026**" in date_value
+    assert "**15 November 2026**" in date_value
+    assert f"<t:{int(datetime.fromisoformat(session['start']).timestamp())}:t>" in date_value
+    assert f"<t:{int(datetime.fromisoformat(session['end']).timestamp())}:t>" in date_value
 
 
 @pytest.mark.asyncio
