@@ -68,6 +68,22 @@ def test_announcement_places_signup_lists_inline(monkeypatch):
     ]
 
 
+def test_announcement_ping_only_allows_the_selected_role():
+    role = SimpleNamespace(id=123, mention="<@&123>")
+
+    content, allowed_mentions = tournaments._announcement_ping(role)
+
+    assert content == "<@&123>\n"
+    assert allowed_mentions.to_dict() == {"roles": [123], "parse": []}
+
+
+def test_announcement_ping_is_empty_when_no_role_is_selected():
+    content, allowed_mentions = tournaments._announcement_ping(None)
+
+    assert content is None
+    assert allowed_mentions.to_dict() == {"parse": []}
+
+
 @pytest.mark.asyncio
 async def test_sqlite_tournament_publish_and_registration_persistence(tmp_path):
     db = Database(db_path=str(tmp_path / "tournament.sqlite3"), dsn="")
