@@ -351,6 +351,78 @@ class TournamentPreviewView(discord.ui.View):
         await interaction.response.edit_message(content="Tournament setup cancelled.", embed=None, view=None)
 
 
+class TournamentDeleteView(discord.ui.View):
+    def __init__(self, cog: "Tournaments", *, user_id: int, event: dict):
+        super().__init__(timeout=60)
+        self.cog = cog
+        self.user_id = user_id
+        self.event = event
+
+    async def _check_owner(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "Only the moderator who started this deletion can confirm it.", ephemeral=True
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="Delete tournament", style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check_owner(interaction):
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        event_id = int(self.event["id"])
+        try:
+            await tq.delete_tournament(self.cog.bot.db, event_id)
+        except Exception:
+            logger.exception("Could not delete tournament %s", event_id)
+            await interaction.edit_original_response(
+                content="Could not delete the tournament. Its data is still in place.",
+                embed=None,
+                view=None,
+            )
+            return
+
+        announcement_removed = True
+        if self.event["message_id"]:
+            channel = self.cog.bot.get_channel(int(self.event["channel_id"]))
+            if channel is None:
+                try:
+                    channel = await self.cog.bot.fetch_channel(int(self.event["channel_id"]))
+                except discord.HTTPException:
+                    channel = None
+            if channel is None:
+                announcement_removed = False
+            else:
+                try:
+                    message = await channel.fetch_message(int(self.event["message_id"]))
+                    await message.delete()
+                except discord.NotFound:
+                    pass
+                except discord.HTTPException:
+                    announcement_removed = False
+                    logger.exception("Could not remove announcement for deleted tournament %s", event_id)
+
+        self.stop()
+        title = discord.utils.escape_markdown(str(self.event["title"]))
+        result = f"Tournament **{title}** and its saved sign-ups were deleted."
+        if announcement_removed:
+            result += " Its announcement was removed."
+        else:
+            result += " I couldn’t remove its announcement; please delete that message manually."
+        result += " Player roles were left unchanged."
+        await interaction.edit_original_response(content=result, embed=None, view=None)
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._check_owner(interaction):
+            return
+        self.stop()
+        await interaction.response.edit_message(
+            content="Tournament deletion cancelled.", embed=None, view=None
+        )
+
+
 class TournamentSetupModal(discord.ui.Modal, title="Create a tournament"):
     title_input = discord.ui.TextInput(label="Tournament title", max_length=100)
     description_input = discord.ui.TextInput(
@@ -503,6 +575,56 @@ class Tournaments(commands.Cog):
                 return
         await interaction.response.send_modal(
             TournamentSetupModal(self, channel=channel, role=role, new_role_name=new_role_name)
+        )
+
+    async def tournament_autocomplete(
+        self, interaction: discord.Interaction, current: str
+    ) -> list[app_commands.Choice[str]]:
+        if interaction.guild_id is None:
+            return []
+        query = current.casefold().strip()
+        events = await tq.get_all_tournaments(self.bot.db)
+        matches = [
+            event for event in reversed(events)
+            if int(event["guild_id"]) == interaction.guild_id
+            and query in f"{event['title']} {event['status']} {event['id']}".casefold()
+        ]
+        return [
+            app_commands.Choice(
+                name=f"{str(event['title'])[:65]} · {event['status']} · #{event['id']}",
+                value=str(event["id"]),
+            )
+            for event in matches[:25]
+        ]
+
+    @tournament.command(name="delete", description="Delete a tournament and its sign-ups")
+    @app_commands.describe(tournament_id="Search tournaments by title or ID")
+    @app_commands.autocomplete(tournament_id=tournament_autocomplete)
+    @app_commands.guild_only()
+    async def delete(self, interaction: discord.Interaction, tournament_id: str):
+        if interaction.guild is None or not self._can_manage(interaction.user):
+            await interaction.response.send_message(
+                "You need Administrator, Manage Server, or Manage Events permission to delete tournaments.",
+                ephemeral=True,
+            )
+            return
+        try:
+            event = await tq.get_tournament(self.bot.db, int(tournament_id))
+        except ValueError:
+            event = None
+        if not event or int(event["guild_id"]) != interaction.guild_id:
+            await interaction.response.send_message(
+                "That tournament wasn’t found in this server.", ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message(
+            content=(
+                f"Delete **{discord.utils.escape_markdown(str(event['title']))}**? "
+                "This removes its announcement and saved sign-ups. Player roles stay unchanged."
+            ),
+            view=TournamentDeleteView(self, user_id=interaction.user.id, event=event),
+            ephemeral=True,
         )
 
     async def handle_response(self, interaction: discord.Interaction,

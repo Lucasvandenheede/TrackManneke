@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
 
@@ -85,6 +86,16 @@ async def test_sqlite_tournament_publish_and_registration_persistence(tmp_path):
             role_id=789,
             created_by=987,
         )
+
+        cog = tournaments.Tournaments(SimpleNamespace(db=db))
+        choices = await cog.tournament_autocomplete(
+            SimpleNamespace(guild_id=123), "fall"
+        )
+        assert len(choices) == 1
+        assert choices[0].value == str(tournament_id)
+        assert await cog.tournament_autocomplete(
+            SimpleNamespace(guild_id=999), "fall"
+        ) == []
 
         await tq.set_message_id(db, tournament_id, 654)
         await tq.set_response(db, tournament_id, 321, "Luckyboi61", "playing")
