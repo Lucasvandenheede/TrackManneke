@@ -10,7 +10,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 from src import config
-from src.db import tournament_queries as tq
+from src import tournament_queries as tq
 
 logger = logging.getLogger(__name__)
 
