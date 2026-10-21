@@ -166,6 +166,16 @@ def parse_sessions(value: str) -> list[dict[str, str]]:
     return sessions
 
 
+def resolve_deadline(value: str, sessions: list[dict[str, str]]) -> datetime:
+    """Use the supplied deadline, or default to one hour before the first session."""
+    first_session = min(datetime.fromisoformat(session["start"]) for session in sessions)
+    return (
+        _parse_datetime(value, date_is_end_of_day=True)
+        if value.strip()
+        else first_session - timedelta(hours=1)
+    )
+
+
 def _timestamp(value: str, style: str = "F") -> str:
     stamp = int(datetime.fromisoformat(value).timestamp())
     return f"<t:{stamp}:{style}>"
@@ -383,12 +393,7 @@ class TournamentSetupModal(discord.ui.Modal, title="Create a tournament"):
             if not 1 <= team_size <= 99:
                 raise ValueError("Players per team must be between 1 and 99.")
             sessions = parse_sessions(self.sessions_input.value)
-            deadline_value = self.deadline_input.value.strip()
-            first_session = min(datetime.fromisoformat(s["start"]) for s in sessions)
-            deadline_dt = (
-                _parse_datetime(deadline_value, date_is_end_of_day=True)
-                if deadline_value else first_session - timedelta(hours=1)
-            )
+            deadline_dt = resolve_deadline(self.deadline_input.value, sessions)
             now = datetime.now(timezone.utc)
             if deadline_dt <= now:
                 raise ValueError("The registration deadline must be in the future.")
