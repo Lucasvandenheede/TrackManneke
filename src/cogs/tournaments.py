@@ -1,11 +1,12 @@
 import json
 import logging
 import re
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import discord
+import dateparser
 from discord import app_commands
 from discord.ext import commands, tasks
 
@@ -33,10 +34,28 @@ def _parse_datetime(value: str, *, date_is_end_of_day: bool = False) -> datetime
     try:
         if date_is_end_of_day and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
             parsed = datetime.combine(datetime.fromisoformat(value).date(), time(23, 59))
+        elif date_is_end_of_day and re.fullmatch(r"\d{1,2}-\d{1,2}-\d{4}", value):
+            parsed = datetime.strptime(value, "%d-%m-%Y").replace(hour=23, minute=59)
         else:
-            parsed = datetime.fromisoformat(value)
-    except ValueError as exc:
-        raise ValueError(f"Could not parse date/time {value!r}. Use YYYY-MM-DD HH:MM.") from exc
+            try:
+                parsed = datetime.fromisoformat(value)
+            except ValueError:
+                parsed = dateparser.parse(
+                    value,
+                    settings={
+                        "TIMEZONE": _event_timezone().key,
+                        "RETURN_AS_TIMEZONE_AWARE": True,
+                        "DATE_ORDER": "DMY",
+                        "PREFER_LOCALE_DATE_ORDER": False,
+                        "PREFER_DATES_FROM": "future",
+                    },
+                )
+                if parsed is None:
+                    raise ValueError
+                if date_is_end_of_day and not re.search(r"\d{1,2}:\d{2}", value):
+                    parsed = parsed.replace(hour=23, minute=59, second=0, microsecond=0)
+    except (ValueError, OverflowError) as exc:
+        raise ValueError(f"Could not parse date/time {value!r}. Use DD-MM-YYYY HH:MM.") from exc
 
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=_event_timezone())
@@ -44,10 +63,29 @@ def _parse_datetime(value: str, *, date_is_end_of_day: bool = False) -> datetime
 
 
 def parse_sessions(value: str) -> list[dict[str, str]]:
-    """Parse explicit ISO sessions or a compact list of dates and shared hours.
+    """Parse one session per line, or legacy ISO and compact schedules.
 
-    Compact example: ``5-6 and 12-13 December 2026 (13:00-16:30)``.
+    Preferred example: ``05-12-2026 13:00 - 16:30``.
     """
+    entries = [entry.strip() for entry in re.split(r"[;\n]+", value) if entry.strip()]
+    new_format = [re.fullmatch(r"(.+?)\s+-\s+(\d{1,2}:\d{2})", entry) for entry in entries]
+    if entries and all(new_format):
+        sessions = []
+        for entry, match in zip(entries, new_format):
+            start = _parse_datetime(match.group(1))
+            try:
+                end_time = datetime.strptime(match.group(2), "%H:%M").time()
+            except ValueError as exc:
+                raise ValueError(f"Invalid end time in schedule entry {entry!r}.") from exc
+            local_start = start.astimezone(_event_timezone())
+            end = datetime.combine(local_start.date(), end_time, tzinfo=_event_timezone())
+            if end <= local_start:
+                raise ValueError("Each end time must be after its start time on that date.")
+            sessions.append({"start": start.isoformat(), "end": end.astimezone(timezone.utc).isoformat()})
+        if len(sessions) > 10:
+            raise ValueError("Enter no more than 10 event sessions.")
+        return sessions
+
     compact = re.fullmatch(
         r"\s*(.*?)\s*(?:\()?\s*(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*\)?\s*",
         value,
@@ -136,29 +174,42 @@ def _timestamp(value: str, style: str = "F") -> str:
 def build_announcement_embed(event: dict, registrations: list[dict]) -> discord.Embed:
     closed = event["status"] != "open"
     embed = discord.Embed(
-        title=event["title"],
+        title=f"🏆 {event['title']}",
         description=event["description"] or "Join a Belgian team for this tournament.",
         colour=discord.Colour.dark_grey() if closed else discord.Colour.blurple(),
     )
     embed.add_field(
-        name="Team size",
+        name="👥 Team size",
         value=f"{event['team_size']} players per team",
         inline=True,
     )
     schedule = json.loads(event["sessions"])
-    schedule_lines = [
-        f"{_timestamp(session['start'])} – {_timestamp(session['end'])}"
-        for session in schedule
-    ]
-    embed.add_field(name="Dates", value="\n".join(schedule_lines), inline=False)
-    embed.add_field(name="Registration deadline", value=_timestamp(event["deadline"]), inline=False)
+    schedule_lines = []
+    for session in schedule:
+        start = datetime.fromisoformat(session["start"])
+        end = datetime.fromisoformat(session["end"])
+        local_start = start.astimezone(_event_timezone())
+        schedule_lines.append(
+            f"**{local_start.strftime('%d %B %Y')}** · "
+            f"<t:{int(start.timestamp())}:t>–<t:{int(end.timestamp())}:t>"
+        )
+    embed.add_field(
+        name="⏳ Registration deadline",
+        value=(
+            f"**{datetime.fromisoformat(event['deadline']).astimezone(_event_timezone()).strftime('%d %B %Y')}** "
+            f"· {_timestamp(event['deadline'], 'R')}"
+        ),
+        inline=False,
+    )
+    embed.add_field(name="📅 Dates", value="\n".join(schedule_lines), inline=False)
 
     for status, (label, _) in RESPONSES.items():
         names = [
             discord.utils.escape_markdown(str(row["display_name"]))
             for row in registrations if row["response"] == status
         ]
-        heading = f"{label} ({len(names)})"
+        emoji = {"playing": "✅", "maybe": "🤔", "declined": "❌"}[status]
+        heading = f"{emoji} {label} ({len(names)})"
         roster = "\n".join(names) if names else "—"
         if len(roster) > 1000:
             visible = []
@@ -300,11 +351,12 @@ class TournamentSetupModal(discord.ui.Modal, title="Create a tournament"):
     sessions_input = discord.ui.TextInput(
         label="Schedule sessions", style=discord.TextStyle.paragraph,
         max_length=1000,
-        placeholder="5-6 and 12-13 December 2026 (13:00-16:30)",
+        placeholder="One per line: 05-12-2026 13:00 - 16:30",
     )
     deadline_input = discord.ui.TextInput(
         label="Registration deadline", max_length=30,
-        placeholder="2026-11-27 23:59 (or date only for end of day)",
+        required=False,
+        placeholder="Optional; blank = 1 hour before the first date",
     )
     team_size_input = discord.ui.TextInput(label="Players per team", max_length=2, placeholder="6")
 
@@ -331,7 +383,12 @@ class TournamentSetupModal(discord.ui.Modal, title="Create a tournament"):
             if not 1 <= team_size <= 99:
                 raise ValueError("Players per team must be between 1 and 99.")
             sessions = parse_sessions(self.sessions_input.value)
-            deadline_dt = _parse_datetime(self.deadline_input.value, date_is_end_of_day=True)
+            deadline_value = self.deadline_input.value.strip()
+            first_session = min(datetime.fromisoformat(s["start"]) for s in sessions)
+            deadline_dt = (
+                _parse_datetime(deadline_value, date_is_end_of_day=True)
+                if deadline_value else first_session - timedelta(hours=1)
+            )
             now = datetime.now(timezone.utc)
             if deadline_dt <= now:
                 raise ValueError("The registration deadline must be in the future.")
