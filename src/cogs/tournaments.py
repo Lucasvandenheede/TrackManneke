@@ -209,7 +209,7 @@ def build_announcement_embed(event: dict, registrations: list[dict]) -> discord.
     embed = discord.Embed(
         title=f"🏆 {event['title']}",
         description=event["description"] or "Join a Belgian team for this tournament.",
-        colour=discord.Colour.dark_grey() if closed else discord.Colour.blurple(),
+        colour=discord.Colour(0xFF0000) if closed else discord.Colour.green(),
     )
     embed.add_field(
         name="👥 Team size",
