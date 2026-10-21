@@ -108,6 +108,16 @@ def test_announcement_ping_only_allows_the_selected_role():
     assert allowed_mentions.to_dict() == {"roles": [123], "parse": []}
 
 
+def test_announcement_ping_allows_two_selected_roles_without_duplicate_pings():
+    first = SimpleNamespace(id=123, mention="<@&123>")
+    second = SimpleNamespace(id=456, mention="<@&456>")
+
+    content, allowed_mentions = tournaments._announcement_ping(first, second, first)
+
+    assert content == "<@&123>\n<@&456>\n"
+    assert allowed_mentions.to_dict() == {"roles": [123, 456], "parse": []}
+
+
 def test_announcement_ping_is_empty_when_no_role_is_selected():
     content, allowed_mentions = tournaments._announcement_ping(None)
 

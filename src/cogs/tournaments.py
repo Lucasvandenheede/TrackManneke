@@ -207,12 +207,18 @@ def _timestamp(value: str, style: str = "F") -> str:
     return f"<t:{stamp}:{style}>"
 
 
-def _announcement_ping(role: Optional[discord.Role]) -> tuple[Optional[str], discord.AllowedMentions]:
-    if role is None:
+def _announcement_ping(*roles: Optional[discord.Role]) -> tuple[Optional[str], discord.AllowedMentions]:
+    selected_roles = []
+    seen_ids = set()
+    for role in roles:
+        if role is not None and role.id not in seen_ids:
+            selected_roles.append(role)
+            seen_ids.add(role.id)
+    if not selected_roles:
         return None, discord.AllowedMentions.none()
     return (
-        f"{role.mention}\n",
-        discord.AllowedMentions(everyone=False, users=False, roles=[role], replied_user=False),
+        "\n".join(role.mention for role in selected_roles) + "\n",
+        discord.AllowedMentions(everyone=False, users=False, roles=selected_roles, replied_user=False),
     )
 
 
@@ -296,7 +302,7 @@ class TournamentRegistrationView(discord.ui.View):
 class TournamentPreviewView(discord.ui.View):
     def __init__(self, cog: "Tournaments", *, user_id: int, guild: discord.Guild,
                  channel: discord.TextChannel, role_id: Optional[int],
-                 new_role_name: Optional[str], announcement_role: Optional[discord.Role],
+                 new_role_name: Optional[str], announcement_roles: list[discord.Role],
                  title: str, description: str,
                  sessions: list[dict[str, str]], deadline: str, team_size: str):
         super().__init__(timeout=300)
@@ -306,7 +312,7 @@ class TournamentPreviewView(discord.ui.View):
         self.channel = channel
         self.role_id = role_id
         self.new_role_name = new_role_name
-        self.announcement_role = announcement_role
+        self.announcement_roles = announcement_roles
         self.title = title
         self.description = description
         self.sessions = sessions
@@ -352,7 +358,7 @@ class TournamentPreviewView(discord.ui.View):
             )
             event = await tq.get_tournament(self.cog.bot.db, tournament_id)
             view = TournamentRegistrationView(self.cog, tournament_id)
-            ping_content, allowed_mentions = _announcement_ping(self.announcement_role)
+            ping_content, allowed_mentions = _announcement_ping(*self.announcement_roles)
             message = await self.channel.send(
                 content=ping_content,
                 embed=build_announcement_embed(event, []),
@@ -489,13 +495,17 @@ class TournamentSetupModal(discord.ui.Modal, title="Create a tournament"):
 
     def __init__(self, cog: "Tournaments", *, channel: discord.TextChannel,
                  role: Optional[discord.Role], new_role_name: Optional[str],
-                 announcement_role: Optional[discord.Role]):
+                 announcement_role: Optional[discord.Role],
+                 announcement_role_2: Optional[discord.Role]):
         super().__init__()
         self.cog = cog
         self.channel = channel
         self.role = role
         self.new_role_name = new_role_name
-        self.announcement_role = announcement_role
+        self.announcement_roles = []
+        for selected_role in (announcement_role, announcement_role_2):
+            if selected_role and all(existing.id != selected_role.id for existing in self.announcement_roles):
+                self.announcement_roles.append(selected_role)
 
     async def on_submit(self, interaction: discord.Interaction):
         if interaction.guild is None or not self.cog._can_manage(interaction.user):
@@ -522,10 +532,10 @@ class TournamentSetupModal(discord.ui.Modal, title="Create a tournament"):
             permissions = self.channel.permissions_for(interaction.guild.me)
             if not permissions.send_messages or not permissions.embed_links:
                 raise ValueError("The bot needs Send Messages and Embed Links in the selected channel.")
-            if self.announcement_role:
-                if self.announcement_role.is_default():
+            for announcement_role in self.announcement_roles:
+                if announcement_role.is_default():
                     raise ValueError("The @everyone role cannot be used as an announcement role.")
-                if not self.announcement_role.mentionable and not permissions.mention_everyone:
+                if not announcement_role.mentionable and not permissions.mention_everyone:
                     raise ValueError(
                         "The bot can only ping a role that is mentionable or when it has Mention @everyone permission."
                     )
@@ -552,7 +562,7 @@ class TournamentSetupModal(discord.ui.Modal, title="Create a tournament"):
                 channel=self.channel,
                 role_id=self.role.id if self.role else None,
                 new_role_name=self.new_role_name,
-                announcement_role=self.announcement_role,
+                announcement_roles=self.announcement_roles,
                 title=title,
                 description=self.description_input.value.strip(),
                 sessions=sessions,
@@ -560,8 +570,9 @@ class TournamentSetupModal(discord.ui.Modal, title="Create a tournament"):
                 team_size=team_size,
             )
             preview_content = f"Review the announcement for {self.channel.mention}. Confirm to publish."
-            if self.announcement_role:
-                preview_content += f"\n\nAnnouncement ping: {self.announcement_role.mention}"
+            if self.announcement_roles:
+                role_mentions = " ".join(role.mention for role in self.announcement_roles)
+                preview_content += f"\n\nAnnouncement ping: {role_mentions}"
             await interaction.response.send_message(
                 content=preview_content,
                 embed=build_announcement_embed(preview_event, []),
@@ -602,7 +613,8 @@ class Tournaments(commands.Cog):
         channel="Server channel for the public sign-up message",
         role="Existing role to give to players who choose Playing",
         new_role_name="Create a role with this name instead of selecting an existing role",
-        announcement_role="Optional role to ping above the public tournament post",
+        announcement_role="First optional role to ping above the public tournament post",
+        announcement_role_2="Second optional role to ping above the public tournament post",
     )
     @app_commands.guild_only()
     async def create(
@@ -612,6 +624,7 @@ class Tournaments(commands.Cog):
         role: Optional[discord.Role] = None,
         new_role_name: Optional[str] = None,
         announcement_role: Optional[discord.Role] = None,
+        announcement_role_2: Optional[discord.Role] = None,
     ):
         if interaction.guild is None or not self._can_manage(interaction.user):
             await interaction.response.send_message(
@@ -639,6 +652,7 @@ class Tournaments(commands.Cog):
                 role=role,
                 new_role_name=new_role_name,
                 announcement_role=announcement_role,
+                announcement_role_2=announcement_role_2,
             )
         )
 
