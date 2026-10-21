@@ -220,7 +220,7 @@ def build_announcement_embed(event: dict, registrations: list[dict]) -> discord.
                 visible.append(name)
                 length += len(name) + 1
             roster = "\n".join(visible) + f"\n…and {len(names) - len(visible)} more"
-        embed.add_field(name=heading, value=roster, inline=False)
+        embed.add_field(name=heading, value=roster, inline=True)
 
     if closed:
         embed.set_footer(text="Registration is closed")
