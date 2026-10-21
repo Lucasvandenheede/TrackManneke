@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List
 import discord
 import src.config as config
+from src.embeds.cotd import COTDEmbed
 from src.utils.formatters import format_time_ms
 
 class TOTDEmbed:
@@ -61,7 +62,8 @@ class TOTDEmbed:
             player_name = player.get("player_name", "Unknown")
             time_str = format_time_ms(player.get("time_ms", 0))
             world_rank = player.get("world_rank", 0)
-            rank_str = f"#{world_rank}" if world_rank else "N/A"
+            rank_emoji = COTDEmbed.PODIUM_EMOJIS.get(world_rank)
+            rank_str = rank_emoji or (f"#{world_rank}" if world_rank else "N/A")
             lines.append(f"{belgian_rank:2d}. ({rank_str}) {player_name} - {time_str}")
 
         return "\n".join(lines)

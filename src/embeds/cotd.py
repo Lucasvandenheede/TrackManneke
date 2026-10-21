@@ -122,9 +122,10 @@ class COTDEmbed:
                 for p in players:
                     time_str = COTDEmbed._format_time_for_entry(p)
                     name = p.get("player_name", "Unknown")
-                    lines.append(
-                        f"**{p['world_rank']}.** {name} ({time_str})"
-                    )
+                    rank = p["world_rank"]
+                    emoji = COTDEmbed.PODIUM_EMOJIS.get(rank)
+                    rank_label = emoji if emoji else f"**{rank}.**"
+                    lines.append(f"{rank_label} {name} ({time_str})")
 
                 if div == 1 and cutoff_line:
                     lines.append(cutoff_line)
