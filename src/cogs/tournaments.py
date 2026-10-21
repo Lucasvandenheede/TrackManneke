@@ -331,7 +331,8 @@ class TournamentPreviewView(discord.ui.View):
     async def publish(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._check_owner(interaction):
             return
-        await interaction.response.defer(ephemeral=True, thinking=True)
+        # This preview is shared in the staff channel, so update it publicly after publishing.
+        await interaction.response.defer()
         created_role = None
         tournament_id = None
         try:
@@ -368,9 +369,13 @@ class TournamentPreviewView(discord.ui.View):
             await tq.set_message_id(self.cog.bot.db, tournament_id, message.id)
             self.cog.bot.add_view(view, message_id=message.id)
             self.stop()
-            await interaction.followup.send(
-                f"Tournament **{discord.utils.escape_markdown(self.title)}** published in {self.channel.mention}.",
-                ephemeral=True,
+            await interaction.edit_original_response(
+                content=(
+                    f"Tournament **{discord.utils.escape_markdown(self.title)}** "
+                    f"published in {self.channel.mention}."
+                ),
+                embed=None,
+                view=None,
             )
         except Exception as exc:
             logger.exception("Could not publish tournament %r", self.title)
@@ -385,7 +390,7 @@ class TournamentPreviewView(discord.ui.View):
                 except Exception:
                     logger.warning("Could not remove unused role %s after failed publication", created_role.id)
             await interaction.followup.send(
-                f"Could not publish the tournament: {exc}", ephemeral=True
+                f"Could not publish the tournament: {exc}", ephemeral=False
             )
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
@@ -577,11 +582,11 @@ class TournamentSetupModal(discord.ui.Modal, title="Create a tournament"):
                 content=preview_content,
                 embed=build_announcement_embed(preview_event, []),
                 view=view,
-                ephemeral=True,
+                ephemeral=False,
                 allowed_mentions=discord.AllowedMentions.none(),
             )
         except (ValueError, ZoneInfoNotFoundError) as exc:
-            await interaction.response.send_message(str(exc), ephemeral=True)
+            await interaction.response.send_message(str(exc), ephemeral=False)
 
 
 class Tournaments(commands.Cog):
