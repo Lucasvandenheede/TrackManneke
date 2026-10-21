@@ -39,4 +39,4 @@ TIMEZONE = os.getenv("TIMEZONE", "Europe/Brussels")
 EMOTE_AT_ID = "1512639786689626154" if ENVIRONMENT not in {"production", "prod"} else "1457699626533785631"
 EMOTE_AT = f"<:AT:{EMOTE_AT_ID}>"
 
-IS_DEV = ENVIRONMENT == "dev"
+IS_DEV = ENVIRONMENT not in {"production", "prod"}

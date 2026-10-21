@@ -30,6 +30,7 @@ class TrackManneke(commands.Bot):
         await self.load_extension("src.cogs.admin")
         await self.load_extension("src.cogs.totd")
         await self.load_extension("src.cogs.cotd")
+        await self.load_extension("src.cogs.tournaments")
         if config.IS_DEV:
             await self.load_extension("src.cogs.posting")
         print("Cogs loaded successfully.")
