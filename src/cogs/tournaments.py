@@ -65,14 +65,28 @@ def _parse_datetime(value: str, *, date_is_end_of_day: bool = False) -> datetime
 def parse_sessions(value: str) -> list[dict[str, str]]:
     """Parse one session per line, or legacy ISO and compact schedules.
 
-    Preferred example: ``05-12-2026 13:00 - 16:30``.
+    Preferred examples: ``05-12-2026 13:00`` or ``05-12-2026 13:00 - 16:30``.
     """
     entries = [entry.strip() for entry in re.split(r"[;\n]+", value) if entry.strip()]
-    new_format = [re.fullmatch(r"(.+?)\s+-\s+(\d{1,2}:\d{2})", entry) for entry in entries]
-    if entries and all(new_format):
+    new_format = []
+    is_new_format = bool(entries)
+    for entry in entries:
+        match = re.fullmatch(r"(.+?)\s+-\s+(\d{1,2}:\d{2})", entry)
+        if match:
+            new_format.append(match)
+        elif re.search(r"\s+-\s+", entry):
+            # Leave legacy full start/end datetime pairs to the old parser below.
+            is_new_format = False
+            break
+        else:
+            new_format.append(None)
+    if is_new_format:
         sessions = []
         for entry, match in zip(entries, new_format):
-            start = _parse_datetime(match.group(1))
+            start = _parse_datetime(match.group(1) if match else entry)
+            if match is None:
+                sessions.append({"start": start.isoformat(), "end": None})
+                continue
             try:
                 end_time = datetime.strptime(match.group(2), "%H:%M").time()
             except ValueError as exc:
@@ -206,12 +220,12 @@ def build_announcement_embed(event: dict, registrations: list[dict]) -> discord.
     schedule_lines = []
     for session in schedule:
         start = datetime.fromisoformat(session["start"])
-        end = datetime.fromisoformat(session["end"])
         local_start = start.astimezone(_event_timezone())
-        schedule_lines.append(
-            f"**{local_start.strftime('%d %B %Y')}** · "
-            f"<t:{int(start.timestamp())}:t>–<t:{int(end.timestamp())}:t>"
-        )
+        line = f"**{local_start.strftime('%d %B %Y')}** · <t:{int(start.timestamp())}:t>"
+        if session.get("end"):
+            end = datetime.fromisoformat(session["end"])
+            line += f"–<t:{int(end.timestamp())}:t>"
+        schedule_lines.append(line)
     embed.add_field(
         name="⏳ Registration deadline",
         value=(

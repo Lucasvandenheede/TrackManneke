@@ -27,6 +27,23 @@ def test_parse_sessions_accepts_one_day_and_time_range_per_line(monkeypatch):
     assert sessions[-1]["start"] == "2026-12-13T12:00:00+00:00"
 
 
+def test_parse_sessions_accepts_start_only_and_mixed_entries(monkeypatch):
+    monkeypatch.setattr(tournaments.config, "TIMEZONE", "Europe/Brussels")
+
+    sessions = tournaments.parse_sessions(
+        "05-12-2026 13:00\n06-12-2026 13:00 - 16:30"
+    )
+
+    assert sessions[0] == {
+        "start": "2026-12-05T12:00:00+00:00",
+        "end": None,
+    }
+    assert sessions[1] == {
+        "start": "2026-12-06T12:00:00+00:00",
+        "end": "2026-12-06T15:30:00+00:00",
+    }
+
+
 def test_parse_sessions_accepts_natural_language_date(monkeypatch):
     monkeypatch.setattr(tournaments.config, "TIMEZONE", "Europe/Brussels")
 
@@ -82,6 +99,25 @@ def test_announcement_ping_is_empty_when_no_role_is_selected():
 
     assert content is None
     assert allowed_mentions.to_dict() == {"parse": []}
+
+
+def test_announcement_shows_only_the_start_when_no_end_is_given(monkeypatch):
+    monkeypatch.setattr(tournaments.config, "TIMEZONE", "Europe/Brussels")
+    event = {
+        "title": "Start-only event",
+        "description": "",
+        "sessions": json.dumps(tournaments.parse_sessions("05-12-2026 13:00")),
+        "deadline": "2026-12-05T11:00:00+00:00",
+        "team_size": 6,
+        "status": "open",
+    }
+
+    embed = tournaments.build_announcement_embed(event, [])
+
+    date_value = next(field.value for field in embed.fields if field.name == "📅 Dates")
+    start_timestamp = int(datetime.fromisoformat(json.loads(event["sessions"])[0]["start"]).timestamp())
+    assert f"<t:{start_timestamp}:t>" in date_value
+    assert "–" not in date_value
 
 
 @pytest.mark.asyncio
