@@ -55,6 +55,8 @@ class Database:
             await self._conn.execute(players_table)
             await self._conn.execute(config_table)
             await self._conn.commit()
+        from src.db.tournament_queries import init_tournament_tables
+        await init_tournament_tables(self)
         logger.debug("Database schema initialized")
 
     async def add_player(self, account_id: str, player_name: str) -> bool:
